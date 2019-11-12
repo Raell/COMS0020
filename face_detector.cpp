@@ -17,7 +17,7 @@
 using namespace std;
 using namespace cv;
 
-vector <Rect> getGroundTruthsFromCSV(string imageName);
+vector <Rect> getGroundTruthsFromCSV(string csv);
 string get_csv_file(const char *imgName);
 vector <Rect> detectAndDisplay(Mat frame);
 float f1_test(vector <Rect> &detected, vector <Rect> &actual, float threshold);
