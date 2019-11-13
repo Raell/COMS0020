@@ -26,31 +26,6 @@ float f1_test(vector <Rect> &detected, vector <Rect> &actual, float threshold);
 String CASCADE_NAME = "frontalface.xml";
 CascadeClassifier cascade;
 
-
-int main(int argc, const char **argv) {
-
-    const char *imgName = argv[1];
-
-    // 1. Read Input Image
-    Mat frame = imread(argv[1], CV_LOAD_IMAGE_COLOR);
-
-    // 2. Load the Strong Classifier in a structure called `Cascade'
-    if (!cascade.load(CASCADE_NAME)) {
-        printf("--(!)Error loading Cascade\n");
-        return -1;
-    };
-
-    string csv_file_path = get_csv_file(imgName);
-
-    vector <Rect> ground_truths = getGroundTruthsFromCSV(csv_file_path);
-
-    vector <Rect> detected = detectAndDisplay(frame);
-
-    f1_test(detected, ground_truths, 50.0);
-
-    imwrite("face_detected.jpg", frame);
-}
-
 string get_csv_file(const char *imgName) {
 
     string fileExtension = "points.csv";
@@ -160,6 +135,32 @@ vector <Rect> detectAndDisplay(Mat frame) {
     }
     return detected;
 }
+
+
+int main(int argc, const char **argv) {
+
+    const char *imgName = argv[1];
+
+    // 1. Read Input Image
+    Mat frame = imread(argv[1], CV_LOAD_IMAGE_COLOR);
+
+    // 2. Load the Strong Classifier in a structure called `Cascade'
+    if (!cascade.load(CASCADE_NAME)) {
+        printf("--(!)Error loading Cascade\n");
+        return -1;
+    };
+
+    string csv_file_path = get_csv_file(imgName);
+
+    vector <Rect> ground_truths = getGroundTruthsFromCSV(csv_file_path);
+
+    vector <Rect> detected = detectAndDisplay(frame);
+
+    f1_test(detected, ground_truths, 50.0);
+
+    imwrite("face_detected.jpg", frame);
+}
+
 
 
 
