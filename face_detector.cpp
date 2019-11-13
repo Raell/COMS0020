@@ -156,7 +156,7 @@ int main(int argc, const char **argv) {
 
     vector <Rect> detected = detectAndDisplay(frame);
 
-    f1_test(detected, ground_truths, 50.0);
+    f1_test(detected, ground_truths, 10.0);
 
     imwrite("face_detected.jpg", frame);
 }
