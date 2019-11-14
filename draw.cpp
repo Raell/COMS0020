@@ -16,7 +16,6 @@
 using namespace std;
 using namespace cv;
 
-
 int main(int argc, const char **argv) {
 
 
@@ -51,6 +50,8 @@ int main(int argc, const char **argv) {
 
     }
 
+
+
     // Go through CSV file line by line
     while (getline(inputFile, current_line)) {
 
@@ -65,8 +66,7 @@ int main(int argc, const char **argv) {
             values.push_back(std::atoi(token.c_str()));
         }
 
-
-        // Populate array with ground truth rectangles
+        //draw a red bounding box
         rectangle(frame, Point(values[0], values[1]), Point(values[0] + values[2], values[1] + values[3]),
                   Scalar(0, 0, 255), 2);
     }
