@@ -8,9 +8,6 @@
 
 using namespace cv;
 
-std::vector<double> rhoValues;
-std::vector<double> thetaValues;
-
 Mat convolution(Mat &input, int size, int direction, Mat kernel, cv::Size image_size);
 
 void drawLines(Mat &image, std::vector<double> &rhoValues, std::vector<double> &thetaValues);
@@ -115,7 +112,7 @@ void drawLines(Mat &image, std::vector<double> &rhoValues, std::vector<double> &
 void collect_lines_from_houghSpace(Mat &houghSpace, std::vector<double> &rhoValues, std::vector<double> &thetaValues,
                                    double threshold) {
     /*
-     * Populates the line vectors and thresholds the houghspace.
+     * Populates the line vectors, and thresholds the houghspace.
      */
 
     for (int y = 0; y < houghSpace.rows; y++) {
