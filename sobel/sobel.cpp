@@ -15,9 +15,9 @@ void convolution(Mat &input, int size, int direction, Mat kernel, Mat &output);
 
 void drawLines(Mat &image, std::vector<double> &rhoValues, std::vector<double> &thetaValues);
 
-void getMagnitude(Mat &dfdx, Mat &dfdy, Mat &output);
+Mat getMagnitude(Mat &dfdx, Mat &dfdy, cv::Size image_size);
 
-void getDirection(Mat &dfdx, Mat &dfdy, Mat &output);
+Mat getDirection(Mat &dfdx, Mat &dfdy, cv::Size image_size);
 
 void getThresholdedMag(Mat &input, Mat &output);
 
@@ -44,6 +44,7 @@ int main(int argc, const char **argv) {
     Mat dfdy;
     dfdy.create(image.size(), CV_64F);
 
+    //init kernels
     Mat dxKernel = (Mat_<double>(3, 3) << -1, 0, 1,
             -2, 0, 2,
             -1, 0, 1);
@@ -52,26 +53,21 @@ int main(int argc, const char **argv) {
             0, 0, 0,
             1, 2, 1);
 
-    Mat gradientMagnitude;
-    gradientMagnitude.create(image.size(), CV_64F);
-
-    Mat gradientDirection;
-    gradientDirection.create(image.size(), CV_64F);
 
     Mat thresholdedMag;
     thresholdedMag.create(image.size(), CV_64F);
 
-    Mat houghSpace;
 
     Mat foundLines = imread(imgName, 1);
 
     convolution(image, 3, 0, dxKernel, dfdx);
     convolution(image, 3, 1, dyKernel, dfdy);
 
-    getMagnitude(dfdx, dfdy, gradientMagnitude);
-    getDirection(dfdx, dfdy, gradientDirection);
-    getThresholdedMag(gradientMagnitude, thresholdedMag);
 
+    Mat gradientMagnitude = getMagnitude(dfdx, dfdy, image.size());
+    Mat gradientDirection = getDirection(dfdx, dfdy, image.size());
+
+    getThresholdedMag(gradientMagnitude, thresholdedMag);
 
     Mat h = get_houghSpace(thresholdedMag, gradientDirection, image.cols, image.rows);
 
@@ -79,11 +75,11 @@ int main(int argc, const char **argv) {
     cv::minMaxLoc(h, &min, &max);
     double houghSpaceThreshold = min + ((max - min) / 2);
 
-    std::vector<double> a;
-    std::vector<double> b;
-    collect_lines_from_houghSpace(houghSpace, a, b, houghSpaceThreshold);
+    std::vector<double> rho;
+    std::vector<double> theta;
+    collect_lines_from_houghSpace(h, rho, theta, houghSpaceThreshold);
 
-    drawLines(foundLines, a, b);
+    drawLines(foundLines, rho, theta);
 
     return 0;
 }
@@ -122,6 +118,10 @@ void drawLines(Mat &image, std::vector<double> &rhoValues, std::vector<double> &
 
 void collect_lines_from_houghSpace(Mat &houghSpace, std::vector<double> &rhoValues, std::vector<double> &thetaValues,
                                    double threshold) {
+    /*
+     * Populates the line vectors and thresholds the houghspace.
+     */
+
     for (int y = 0; y < houghSpace.rows; y++) {
         for (int x = 0; x < houghSpace.cols; x++) {
             double val = houghSpace.at<double>(y, x);
@@ -130,8 +130,9 @@ void collect_lines_from_houghSpace(Mat &houghSpace, std::vector<double> &rhoValu
                 rhoValues.push_back(y);
                 thetaValues.push_back(x);
                 houghSpace.at<double>(y, x) = 255;
-                // std::cout<< rhoValues.size() << " + " << thetaValues.size() << "\n";
-            } else houghSpace.at<double>(y, x) = 0.0;
+            } else {
+                houghSpace.at<double>(y, x) = 0.0;
+            }
         }
     }
     imwrite("output/houghSpace.jpg", houghSpace);
@@ -223,7 +224,10 @@ void convolution(Mat &input, int size, int direction, Mat kernel, Mat &output) {
     else imwrite("output/dfdy.jpg", img);
 }
 
-void getMagnitude(Mat &dfdx, Mat &dfdy, Mat &output) {
+Mat getMagnitude(Mat &dfdx, Mat &dfdy, cv::Size image_size) {
+    Mat output;
+    output.create(image_size, CV_64F);
+
     for (int y = 0; y < output.rows; y++) {
         for (int x = 0; x < output.cols; x++) {
 
@@ -234,7 +238,6 @@ void getMagnitude(Mat &dfdx, Mat &dfdy, Mat &output) {
             dxVal = dfdx.at<double>(y, x);
             dyVal = dfdy.at<double>(y, x);
 
-            // Calculate magnitude
             magnitudeVal = sqrt(pow(dxVal, 2) + pow(dyVal, 2));
 
             output.at<double>(y, x) = magnitudeVal;
@@ -246,10 +249,15 @@ void getMagnitude(Mat &dfdx, Mat &dfdy, Mat &output) {
 
     normalize(output, img, 0, 255, NORM_MINMAX);
 
-    imwrite("output/magnitude.jpg", img);
+    imwrite("result/magnitude.jpg", img);
+    return output;
 }
 
-void getDirection(Mat &dfdx, Mat &dfdy, Mat &output) {
+Mat getDirection(Mat &dfdx, Mat &dfdy, cv::Size image_size) {
+
+    Mat output;
+    output.create(image_size, CV_64F);
+
     for (int y = 0; y < output.rows; y++) {
         for (int x = 0; x < output.cols; x++) {
 
@@ -273,7 +281,8 @@ void getDirection(Mat &dfdx, Mat &dfdy, Mat &output) {
 
     normalize(output, img, 0, 255, NORM_MINMAX);
 
-    imwrite("output/direction.jpg", img);
+    imwrite("result/direction.jpg", img);
+    return output;
 }
 
 void getThresholdedMag(Mat &input, Mat &output) {
@@ -293,5 +302,5 @@ void getThresholdedMag(Mat &input, Mat &output) {
         }
     }
 
-    imwrite("output/thresholded.jpg", output);
+    imwrite("result/thresholded.jpg", output);
 }
