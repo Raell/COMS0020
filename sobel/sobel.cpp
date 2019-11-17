@@ -266,7 +266,6 @@ Mat getDirection(Mat &dfdx, Mat &dfdy, cv::Size image_size) {
             else gradientVal = (double) atan(0);
 
             output.at<double>(y, x) = gradientVal;
-            std::cout << gradientVal << " ";
 
         }
     }
