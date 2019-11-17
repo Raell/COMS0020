@@ -58,11 +58,11 @@ int main(int argc, const char **argv) {
 
     getThresholdedMag(gradientMagnitude, thresholdedMag);
 
-    Mat h = get_houghSpace(thresholdedMag, gradientDirection, image.cols, image.rows);
+    Mat houghSpace = get_houghSpace(thresholdedMag, gradientDirection, image.cols, image.rows);
 
     //ad-hoc method to find threshold...maybe use hardcoded values?
     double min, max;
-    cv::minMaxLoc(h, &min, &max);
+    cv::minMaxLoc(houghSpace, &min, &max);
     double houghSpaceThreshold = min + ((max - min) / 2);
 
 
@@ -70,7 +70,7 @@ int main(int argc, const char **argv) {
     std::vector<double> rho;
     std::vector<double> theta;
 
-    collect_lines_from_houghSpace(h, rho, theta, houghSpaceThreshold);
+    collect_lines_from_houghSpace(houghSpace, rho, theta, houghSpaceThreshold);
 
     drawLines(image_clone, rho, theta);
 
