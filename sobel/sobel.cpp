@@ -8,7 +8,7 @@
 
 using namespace cv;
 
-Mat convolution(Mat &input, int size, int direction, Mat kernel, cv::Size image_size);
+Mat convolution(Mat &input, int direction, Mat kernel, cv::Size image_size);
 
 void drawLines(Mat &image, std::vector<double> &rhoValues, std::vector<double> &thetaValues);
 
@@ -50,8 +50,8 @@ int main(int argc, const char **argv) {
 
     Mat image_clone = imread(imgName, 1);
 
-    Mat dfdx = convolution(image, 3, 0, dxKernel, image.size());
-    Mat dfdy = convolution(image, 3, 1, dyKernel, image.size());
+    Mat dfdx = convolution(image, 0, dxKernel, image.size());
+    Mat dfdy = convolution(image, 1, dyKernel, image.size());
 
     Mat gradientMagnitude = getMagnitude(dfdx, dfdy, image.size());
     Mat gradientDirection = getDirection(dfdx, dfdy, image.size());
@@ -168,7 +168,7 @@ Mat get_houghSpace(Mat &thresholdMag, Mat &gradientDirection, int width, int hei
     return hough_space;
 }
 
-Mat convolution(Mat &input, int size, int direction, Mat kernel, cv::Size image_size) {
+Mat convolution(Mat &input, int direction, Mat kernel, cv::Size image_size) {
     Mat output;
     output.create(image_size, CV_64F);
 
