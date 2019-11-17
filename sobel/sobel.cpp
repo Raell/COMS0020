@@ -16,7 +16,7 @@ Mat getMagnitude(Mat &dfdx, Mat &dfdy, cv::Size image_size);
 
 Mat getDirection(Mat &dfdx, Mat &dfdy, cv::Size image_size);
 
-void getThresholdedMag(Mat &input, Mat &output);
+void getThresholdedMag(Mat &input, Mat &output, double gradient_threshold);
 
 Mat get_houghSpace(Mat &thresholdMag, Mat &gradientDirection, int width, int height);
 
@@ -45,9 +45,6 @@ int main(int argc, const char **argv) {
             0, 0, 0,
             1, 2, 1);
 
-    Mat thresholdedMag;
-    thresholdedMag.create(image.size(), CV_64F);
-
     Mat image_clone = imread(imgName, 1);
 
     Mat dfdx = convolution(image, 0, dxKernel, image.size());
@@ -56,17 +53,17 @@ int main(int argc, const char **argv) {
     Mat gradientMagnitude = getMagnitude(dfdx, dfdy, image.size());
     Mat gradientDirection = getDirection(dfdx, dfdy, image.size());
 
-    getThresholdedMag(gradientMagnitude, thresholdedMag);
+    Mat thresholdedMag;
+    thresholdedMag.create(image.size(), CV_64F);
+
+    getThresholdedMag(gradientMagnitude, thresholdedMag, 200.0);
 
     Mat houghSpace = get_houghSpace(thresholdedMag, gradientDirection, image.cols, image.rows);
 
-    //ad-hoc method to find threshold...maybe use hardcoded values?
     double min, max;
     cv::minMaxLoc(houghSpace, &min, &max);
     double houghSpaceThreshold = min + ((max - min) / 2);
 
-
-    //maybe use a specialized class - Line<Pair<Rho, Theta>>?
     std::vector<double> rho;
     std::vector<double> theta;
 
@@ -122,6 +119,7 @@ void collect_lines_from_houghSpace(Mat &houghSpace, std::vector<double> &rhoValu
             if (val > threshold) {
                 rhoValues.push_back(y);
                 thetaValues.push_back(x);
+                //   std::cout << x << " ";
                 houghSpace.at<double>(y, x) = 255;
             } else {
                 houghSpace.at<double>(y, x) = 0.0;
@@ -164,7 +162,8 @@ Mat get_houghSpace(Mat &thresholdMag, Mat &gradientDirection, int width, int hei
             }
         }
     }
-    imwrite("result/HoughSpace.jpg", hough_space);
+    normalize(hough_space, hough_space, 0, 255, NORM_MINMAX);
+
     return hough_space;
 }
 
@@ -257,18 +256,18 @@ Mat getDirection(Mat &dfdx, Mat &dfdy, cv::Size image_size) {
     for (int y = 0; y < output.rows; y++) {
         for (int x = 0; x < output.cols; x++) {
 
-            double dxVal = 0.0;
-            double dyVal = 0.0;
             double gradientVal = 0.0;
 
-            dxVal = dfdx.at<double>(y, x);
-            dyVal = dfdy.at<double>(y, x);
+            double dxVal = dfdx.at<double>(y, x);
+            double dyVal = dfdy.at<double>(y, x);
 
             // Calculate direction
             if (dxVal != 0 && dyVal != 0) gradientVal = atan2(dyVal, dxVal);
             else gradientVal = (double) atan(0);
 
             output.at<double>(y, x) = gradientVal;
+            std::cout << gradientVal << " ";
+
         }
     }
 
@@ -281,7 +280,7 @@ Mat getDirection(Mat &dfdx, Mat &dfdy, cv::Size image_size) {
     return output;
 }
 
-void getThresholdedMag(Mat &input, Mat &output) {
+void getThresholdedMag(Mat &input, Mat &output, double gradient_threshold) {
     Mat img;
     img.create(input.size(), CV_64F);
 
@@ -293,7 +292,7 @@ void getThresholdedMag(Mat &input, Mat &output) {
             double val = 0;
             val = img.at<double>(y, x);
 
-            if (val > 100) output.at<double>(y, x) = 255.0;
+            if (val > gradient_threshold) output.at<double>(y, x) = 255.0;
             else output.at<double>(y, x) = 0.0;
         }
     }
