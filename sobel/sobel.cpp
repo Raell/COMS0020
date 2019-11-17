@@ -68,6 +68,8 @@ int main(int argc, const char **argv) {
     cv::minMaxLoc(h, &min, &max);
     double houghSpaceThreshold = min + ((max - min) / 2);
 
+
+    //maybe use a specialized class - Line<Pair<Rho, Theta>>?
     std::vector<double> rho;
     std::vector<double> theta;
 
