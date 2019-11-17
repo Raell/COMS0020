@@ -128,7 +128,7 @@ void collect_lines_from_houghSpace(Mat &houghSpace, std::vector<double> &rhoValu
             }
         }
     }
-    imwrite("output/houghSpace.jpg", houghSpace);
+    imwrite("result/houghSpace.jpg", houghSpace);
 }
 
 Mat get_houghSpace(Mat &thresholdMag, Mat &gradientDirection, int width, int height) {
