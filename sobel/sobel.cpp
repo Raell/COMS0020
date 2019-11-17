@@ -11,7 +11,7 @@ using namespace cv;
 std::vector<double> rhoValues;
 std::vector<double> thetaValues;
 
-void convolution(Mat &input, int size, int direction, Mat kernel, Mat &output);
+Mat convolution(Mat &input, int size, int direction, Mat kernel, cv::Size image_size);
 
 void drawLines(Mat &image, std::vector<double> &rhoValues, std::vector<double> &thetaValues);
 
@@ -38,11 +38,6 @@ int main(int argc, const char **argv) {
 
     cvtColor(image, image, CV_BGR2GRAY);
 
-    Mat dfdx;
-    dfdx.create(image.size(), CV_64F);
-
-    Mat dfdy;
-    dfdy.create(image.size(), CV_64F);
 
     //init kernels
     Mat dxKernel = (Mat_<double>(3, 3) << -1, 0, 1,
@@ -53,16 +48,13 @@ int main(int argc, const char **argv) {
             0, 0, 0,
             1, 2, 1);
 
-
     Mat thresholdedMag;
     thresholdedMag.create(image.size(), CV_64F);
 
+    Mat image_clone = imread(imgName, 1);
 
-    Mat foundLines = imread(imgName, 1);
-
-    convolution(image, 3, 0, dxKernel, dfdx);
-    convolution(image, 3, 1, dyKernel, dfdy);
-
+    Mat dfdx = convolution(image, 3, 0, dxKernel, image.size());
+    Mat dfdy = convolution(image, 3, 1, dyKernel, image.size());
 
     Mat gradientMagnitude = getMagnitude(dfdx, dfdy, image.size());
     Mat gradientDirection = getDirection(dfdx, dfdy, image.size());
@@ -71,15 +63,17 @@ int main(int argc, const char **argv) {
 
     Mat h = get_houghSpace(thresholdedMag, gradientDirection, image.cols, image.rows);
 
+    //ad-hoc method to find threshold...maybe use hardcoded values?
     double min, max;
     cv::minMaxLoc(h, &min, &max);
     double houghSpaceThreshold = min + ((max - min) / 2);
 
     std::vector<double> rho;
     std::vector<double> theta;
+
     collect_lines_from_houghSpace(h, rho, theta, houghSpaceThreshold);
 
-    drawLines(foundLines, rho, theta);
+    drawLines(image_clone, rho, theta);
 
     return 0;
 }
@@ -175,7 +169,9 @@ Mat get_houghSpace(Mat &thresholdMag, Mat &gradientDirection, int width, int hei
     return hough_space;
 }
 
-void convolution(Mat &input, int size, int direction, Mat kernel, Mat &output) {
+Mat convolution(Mat &input, int size, int direction, Mat kernel, cv::Size image_size) {
+    Mat output;
+    output.create(image_size, CV_64F);
 
     int kernelRadiusX = (kernel.size[0] - 1) / 2;
     int kernelRadiusY = (kernel.size[1] - 1) / 2;
@@ -220,8 +216,9 @@ void convolution(Mat &input, int size, int direction, Mat kernel, Mat &output) {
     normalize(output, img, 0, 255, NORM_MINMAX);
 
     //Save thresholded image
-    if (direction == 0) imwrite("output/dfdx.jpg", img);
-    else imwrite("output/dfdy.jpg", img);
+    if (direction == 0) imwrite("result/dfdx.jpg", img);
+    else imwrite("result/dfdy.jpg", img);
+    return output;
 }
 
 Mat getMagnitude(Mat &dfdx, Mat &dfdy, cv::Size image_size) {
