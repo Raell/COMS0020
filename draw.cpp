@@ -39,10 +39,10 @@ int main(int argc, const char **argv) {
         imgNameString.replace(i, fileExtension.length(), fileExtension);
     }
 
-    const char *c = (filePrefix + imgNameString).c_str();
-    ifstream inputFile(c);
+    const string c = filePrefix + imgNameString;
+    ifstream inputFile(c.c_str());
 
-    cout << filePrefix + imgNameString;
+    cout << c.c_str() << '\n';
 
     if (inputFile.peek() == std::ifstream::traits_type::eof()) {
         std::cout << "No CSV file found. F1 score cannot be calculated" << '\n';
