@@ -7,10 +7,11 @@
 #define PI 3.14159265
 
 using namespace cv;
+using namespace std;
 
 Mat convolution(Mat &input, int direction, Mat kernel, cv::Size image_size);
 
-void drawLines(Mat &image, std::vector<double> &rhoValues, std::vector<double> &thetaValues);
+void drawLines(Mat &image, Mat thresholdedMag, std::vector<double> &rhoValues, std::vector<double> &thetaValues);
 
 Mat getMagnitude(Mat &dfdx, Mat &dfdy, cv::Size image_size);
 
@@ -72,12 +73,14 @@ int main(int argc, const char **argv) {
 
     collect_lines_from_houghSpace(houghSpace, rho, theta, houghSpaceThreshold);
 
-    drawLines(image_clone, rho, theta);
+    drawLines(image_clone, thresholdedMag, rho, theta);
 
     return 0;
 }
 
-void drawLines(Mat &image, std::vector<double> &rhoValues, std::vector<double> &thetaValues) {
+void drawLines(Mat &image, Mat thresholdedMag, std::vector<double> &rhoValues, std::vector<double> &thetaValues) {
+    
+    Mat lines(image.size(), image.type(), Scalar(0));
     int width = image.cols;
     int height = image.rows;
     int centreX = image.cols / 2;
@@ -103,9 +106,18 @@ void drawLines(Mat &image, std::vector<double> &rhoValues, std::vector<double> &
         point2.x = cvRound(x0 - 1000 * (-b));
         point2.y = cvRound(y0 - 1000 * (a));
 
-        line(image, point1, point2, Scalar(0, 255, 0), 2);
+        line(lines, point1, point2, Scalar(0, 0, 255), 1);
+        line(image, point1, point2, Scalar(0, 0, 255), 1);
     }
 
+    thresholdedMag.convertTo(thresholdedMag, CV_8U);
+
+    Mat overlay;
+    overlay.zeros(image.size(), image.type());
+    lines.copyTo(overlay, thresholdedMag);
+
+    imwrite("result/lines.jpg", lines);
+    imwrite("result/overlay.jpg", overlay);
     imwrite("result/foundLines.jpg", image);
 }
 
@@ -135,7 +147,7 @@ Mat get_houghSpace(Mat &thresholdMag, Mat &gradientDirection, int width, int hei
 
     Mat hough_space;
     hough_space.create(2 * (width + height), 360, CV_64F);
-    double angle_range = 20;
+    double angle_range = 90;
 
     for (int y = 0; y < thresholdMag.rows; y++) {
         for (int x = 0; x < thresholdMag.cols; x++) {
