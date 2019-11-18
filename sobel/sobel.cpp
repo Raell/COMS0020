@@ -26,7 +26,7 @@ Mat get_houghSpace(Mat &thresholdMag, Mat &gradientDirection, int width, int hei
 
 void collect_lines_from_houghSpace(Mat &houghSpace, std::vector<double> &rhoValues, std::vector<double> &thetaValues,
                                    double threshold);
-vector<tuple<Point, double, double, double>> houghEllipse(Mat &thresholdMag, int width, int height, double min_major, double min_minor, int detection_threshold);
+vector<tuple<Point, double, double, double>> houghEllipse(Mat &thresholdMag, int width, int height, tuple<double, double, int> ellipses_thresholds);
 
 void drawEllipse(Mat &image, Mat thresholdedMag, vector<tuple<Point, double, double, double>> hough_ellipse);
 
@@ -38,13 +38,14 @@ double calculate_houghSpace_voting_threshold(Mat &hough_space) {
 
 }
 
+tuple<double, double, int> calculate_ellipse_detection_threshold(Mat &image, Mat &mag, Mat &dir);
+
 int main(int argc, const char **argv) {
 
     const char *imgName = argv[1];
 
     Mat image;
     image = imread(imgName, 1);
-
 
     cvtColor(image, image, CV_BGR2GRAY);
 
@@ -82,22 +83,24 @@ int main(int argc, const char **argv) {
 
     drawLines(image_clone, thresholdedMag, rho, theta);
 
-    double min_major = 70;
-    double min_minor = 50;
-    int detection_threshold = 100;
+    tuple<double, double, int> ellipses_thresholds =  calculate_ellipse_detection_threshold(image, thresholdedMag, gradientDirection);
 
-    // vector<tuple<Point, double, double, double>> hough_ellipse = houghEllipse(thresholdedMag, image.cols, image.rows,
-    //     min_major, min_minor, detection_threshold);
-
+    vector<tuple<Point, double, double, double>> hough_ellipse = houghEllipse(thresholdedMag, image.cols, image.rows,
+        ellipses_thresholds);
 
     drawEllipse(image_clone, thresholdedMag, hough_ellipse);
 
     return 0;
 }
 
+tuple<double, double, int> calculate_ellipse_detection_threshold(Mat &image, Mat &mag, Mat &dir) {
+    return tuple<double,double,int> (50, 30, 60);
+}
+
 void drawEllipse(Mat &image, Mat thresholdedMag, 
     vector<tuple<Point, double, double, double>> hough_ellipse) {
 
+    Mat image_clone = image.clone();
     Mat ellipses(image.size(), image.type(), Scalar(0));
 
     for (int i = 0; i < hough_ellipse.size(); i++) {
@@ -111,7 +114,7 @@ void drawEllipse(Mat &image, Mat thresholdedMag,
         ellipse(ellipses, center, axes, alpha, 0, 360,
             Scalar(0, 0, 255),
             2);
-        ellipse(image, center, axes, alpha, 0, 360,
+        ellipse(image_clone, center, axes, alpha, 0, 360,
             Scalar(0, 0, 255),
             2);
     }
@@ -119,18 +122,20 @@ void drawEllipse(Mat &image, Mat thresholdedMag,
     thresholdedMag.convertTo(thresholdedMag, CV_8U);
 
     Mat overlay;
-    overlay.zeros(image.size(), image.type());
+    overlay.zeros(image_clone.size(), image_clone.type());
     ellipses.copyTo(overlay, thresholdedMag);
 
     imwrite("result/ellipses.jpg", ellipses);
     imwrite("result/overlay.jpg", overlay);
-    imwrite("result/foundEllipses.jpg", image);
+    imwrite("result/foundEllipses.jpg", image_clone);
 
 }
 
 void drawLines(Mat &image, Mat thresholdedMag, std::vector<double> &rhoValues, std::vector<double> &thetaValues) {
 
     Mat lines(image.size(), image.type(), Scalar(0));
+    Mat image_clone = image.clone();
+
     int width = image.cols;
     int height = image.rows;
     int centreX = image.cols / 2;
@@ -157,18 +162,18 @@ void drawLines(Mat &image, Mat thresholdedMag, std::vector<double> &rhoValues, s
         point2.y = cvRound(y0 - 1000 * (a));
 
         line(lines, point1, point2, Scalar(0, 0, 255), 1);
-        line(image, point1, point2, Scalar(0, 0, 255), 1);
+        line(image_clone, point1, point2, Scalar(0, 0, 255), 1);
     }
 
     thresholdedMag.convertTo(thresholdedMag, CV_8U);
 
     Mat overlay;
-    overlay.zeros(image.size(), image.type());
+    overlay.zeros(image_clone.size(), image_clone.type());
     lines.copyTo(overlay, thresholdedMag);
 
     imwrite("result/lines.jpg", lines);
     imwrite("result/overlay.jpg", overlay);
-    imwrite("result/foundLines.jpg", image);
+    imwrite("result/foundLines.jpg", image_clone);
 }
 
 void collect_lines_from_houghSpace(Mat &houghSpace, std::vector<double> &rhoValues, std::vector<double> &thetaValues, double threshold) {
@@ -231,7 +236,7 @@ Mat get_houghSpace(Mat &thresholdMag, Mat &gradientDirection, int width, int hei
     return hough_space;
 }
 
-vector<tuple<Point, double, double, double>> houghEllipse(Mat &thresholdMag, int width, int height, double min_major, double min_minor, int detection_threshold) {
+vector<tuple<Point, double, double, double>> houghEllipse(Mat &thresholdMag, int width, int height, tuple<double, double, int> ellipses_thresholds) {
     // Hough Ellipse detection based on 
     // Xie, Yonghong, and Qiang Ji. "A new efficient ellipse detection method." Pattern Recognition, 2002. Proceedings. 16th International Conference on. Vol. 2. IEEE, 2002
 
@@ -240,6 +245,10 @@ vector<tuple<Point, double, double, double>> houghEllipse(Mat &thresholdMag, int
     Mat mag = thresholdMag.clone();
     mag.convertTo(mag, CV_8U);
     findNonZero(mag, locations);
+
+    double min_major = get<0>(ellipses_thresholds);
+    double min_minor = get<1>(ellipses_thresholds);
+    int detection_threshold = get<2>(ellipses_thresholds);
 
     // Stores found ecllipse in (x0, y0, a, b, alpha) format
     vector<tuple<Point, double, double, double>> ellipse;
