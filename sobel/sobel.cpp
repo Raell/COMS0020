@@ -6,6 +6,9 @@
 
 #define PI 3.14159265
 
+#define GRADIENT_THRESHOLD 200.0
+#define ANGLE_RANGE 20
+
 using namespace cv;
 using namespace std;
 
@@ -23,6 +26,14 @@ Mat get_houghSpace(Mat &thresholdMag, Mat &gradientDirection, int width, int hei
 
 void collect_lines_from_houghSpace(Mat &houghSpace, std::vector<double> &rhoValues, std::vector<double> &thetaValues,
                                    double threshold);
+
+double calculate_houghSpace_voting_threshold(Mat &hough_space) {
+    double max, min;
+    cv::minMaxLoc(hough_space, &min, &max);
+    double houghSpaceThreshold = min + ((max - min) / 2);
+    return houghSpaceThreshold;
+
+}
 
 int main(int argc, const char **argv) {
 
@@ -57,13 +68,11 @@ int main(int argc, const char **argv) {
     Mat thresholdedMag;
     thresholdedMag.create(image.size(), CV_64F);
 
-    getThresholdedMag(gradientMagnitude, thresholdedMag, 200.0);
+    getThresholdedMag(gradientMagnitude, thresholdedMag, GRADIENT_THRESHOLD);
 
     Mat houghSpace = get_houghSpace(thresholdedMag, gradientDirection, image.cols, image.rows);
 
-    double min, max;
-    cv::minMaxLoc(houghSpace, &min, &max);
-    double houghSpaceThreshold = min + ((max - min) / 2);
+    double houghSpaceThreshold = calculate_houghSpace_voting_threshold(houghSpace);
 
     std::vector<double> rho;
     std::vector<double> theta;
@@ -76,7 +85,7 @@ int main(int argc, const char **argv) {
 }
 
 void drawLines(Mat &image, Mat thresholdedMag, std::vector<double> &rhoValues, std::vector<double> &thetaValues) {
-    
+
     Mat lines(image.size(), image.type(), Scalar(0));
     int width = image.cols;
     int height = image.rows;
@@ -145,7 +154,7 @@ Mat get_houghSpace(Mat &thresholdMag, Mat &gradientDirection, int width, int hei
 
     Mat hough_space;
     hough_space.create(2 * (width + height), 360, CV_64F);
-    double angle_range = 90;
+    double angle_range = ANGLE_RANGE;
 
     for (int y = 0; y < thresholdMag.rows; y++) {
         for (int x = 0; x < thresholdMag.cols; x++) {
