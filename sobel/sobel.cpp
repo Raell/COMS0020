@@ -79,39 +79,21 @@ void drawCircles(Mat &image, vector <Circle> &circles) {
     imwrite("result/foundCircles.jpg", image);
 }
 
-int ***allocate3DArray(int y, int x, int r) {
-    int ***array = (int ***) malloc(sizeof(int **) * y);
-    for (int i = 0; i < y; i++) {
-        array[i] = (int **) malloc(sizeof(int *) * x);
-        for (int j = 0; j < x; j++) {
-            array[i][j] = (int *) malloc(sizeof(int) * r);
-            for (int k = 0; k < r; k++) {
-                array[i][j][k] = 0;
-            }
-        }
-    }
-    return array;
-
-}
-
-void free3DArray(int ***arr, int y, int x, int r) {
-    for (int i = 0; i < y; i++) {
-        for (int j = 0; j < x; j++) {
-            free(arr[i][j]);
-        }
-        free(arr[i]);
-
-    }
-    free(arr);
-
-}
 
 vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir, int voting_threshold) {
 
     int radius = image.rows / 2;
 
+    int  rows{image.rows};
+    int  cols{image.cols};
+    int initialValue{0};
+
+
+    // Define 3 dimensional vector and initialize it.
     //create a houghspace parameterized on circle centre (x,y) and radius (r)
-    int ***houghSpace = allocate3DArray(image.rows, image.cols, radius);
+
+    std::vector<std::vector<std::vector<int>>> houghSpace(rows, std::vector<std::vector<int>>(cols, std::vector<int>(radius,initialValue)));
+
     for (int y = 0; y < image.rows; y++) {
         for (int x = 0; x < image.cols; x++) {
 
@@ -153,7 +135,6 @@ vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir, i
         }
     }
 
-    free3DArray(houghSpace, image.rows, image.cols, radius);
 
     return circles;
 }
