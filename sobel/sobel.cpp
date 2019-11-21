@@ -94,7 +94,7 @@ int ***allocate3DArray(int y, int x, int r) {
 
 }
 
-void free3d(int ***arr, int y, int x, int r) {
+void free3DArray(int ***arr, int y, int x, int r) {
     for (int i = 0; i < y; i++) {
         for (int j = 0; j < x; j++) {
             free(arr[i][j]);
@@ -153,7 +153,7 @@ vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir, i
         }
     }
 
-    free3d(houghSpace, image.rows, image.cols, radius);
+    free3DArray(houghSpace, image.rows, image.cols, radius);
 
     return circles;
 }
