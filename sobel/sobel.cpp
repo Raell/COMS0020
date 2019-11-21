@@ -200,7 +200,7 @@ int main(int argc, const char **argv) {
     auto lines = collect_lines_from_houghSpace(houghSpace, houghLinesThreshold);
 
     drawLines(image_clone, thresholdedMag, lines);
-    auto circles = houghCircles(image_clone, thresholdedMag, gradientDirection, 30);
+    auto circles = houghCircles(circle_frame, thresholdedMag, gradientDirection, 30);
     drawCircles(circle_frame, circles);
 
     return 0;
