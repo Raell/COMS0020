@@ -12,6 +12,8 @@
 using namespace cv;
 using namespace std;
 
+using Ellipse = tuple<Point, double, double, double, int>;
+
 Mat convolution(Mat &input, int direction, Mat kernel, cv::Size image_size);
 
 void drawLines(Mat &image, Mat thresholdedMag, std::vector<double> &rhoValues, std::vector<double> &thetaValues);
@@ -24,11 +26,21 @@ void getThresholdedMag(Mat &input, Mat &output, double gradient_threshold);
 
 Mat get_houghSpace(Mat &thresholdMag, Mat &gradientDirection, int width, int height);
 
-void collect_lines_from_houghSpace(Mat &houghSpace, std::vector<double> &rhoValues, std::vector<double> &thetaValues,
-                                   double threshold);
-vector<tuple<Point, double, double, double>> houghEllipse(Mat &thresholdMag, int width, int height, tuple<double, double, int> ellipses_thresholds);
+void collect_lines_from_houghSpace(Mat &houghSpace, std::vector<double> &rhoValues, std::vector<double> &thetaValues, double threshold);
 
-void drawEllipse(Mat &image, Mat thresholdedMag, vector<tuple<Point, double, double, double>> hough_ellipse);
+vector<Ellipse> houghEllipse(Mat &thresholdMag, int width, int height, tuple<vector<int>, vector<double>> ellipses_thresholds);
+
+void drawEllipse(Mat &image, Mat thresholdedMag, vector<Ellipse> hough_ellipse);
+
+double weighted_params(double prev, double current, int prev_score, int curr_score, bool angles);
+
+Ellipse merge_ellipses(vector<Ellipse, int> &accumulator, Ellipse new_ellipse,  
+    double center_distance_threshold, double semimajor_axis_threshold, 
+    double semiminor_axis_threshold, double angle_threshold
+    );
+
+tuple<vector<int>, vector<double>> calculate_ellipse_detection_threshold(Mat &image, Mat &mag, Mat &dir);
+
 
 double calculate_houghSpace_voting_threshold(Mat &hough_space) {
     double max, min;
@@ -37,8 +49,6 @@ double calculate_houghSpace_voting_threshold(Mat &hough_space) {
     return houghSpaceThreshold;
 
 }
-
-tuple<double, double, int> calculate_ellipse_detection_threshold(Mat &image, Mat &mag, Mat &dir);
 
 int main(int argc, const char **argv) {
 
@@ -83,9 +93,9 @@ int main(int argc, const char **argv) {
 
     drawLines(image_clone, thresholdedMag, rho, theta);
 
-    tuple<double, double, int> ellipses_thresholds =  calculate_ellipse_detection_threshold(image, thresholdedMag, gradientDirection);
+    tuple<vector<int>, vector<double>> ellipses_thresholds =  calculate_ellipse_detection_threshold(image, thresholdedMag, gradientDirection);
 
-    vector<tuple<Point, double, double, double>> hough_ellipse = houghEllipse(thresholdedMag, image.cols, image.rows,
+    vector<Ellipse> hough_ellipse = houghEllipse(thresholdedMag, image.cols, image.rows,
         ellipses_thresholds);
 
     drawEllipse(image_clone, thresholdedMag, hough_ellipse);
@@ -93,12 +103,127 @@ int main(int argc, const char **argv) {
     return 0;
 }
 
-tuple<double, double, int> calculate_ellipse_detection_threshold(Mat &image, Mat &mag, Mat &dir) {
-    return tuple<double,double,int> (50, 30, 60);
+double weighted_params(double prev, double current, int prev_score, int curr_score, bool angles) 
+{
+
+    if (!angles) {
+        return ((prev * prev_score) + (current * curr_score))/(prev_score + curr_score);
+    }
+
+    else {
+        double curr_rad = current * CV_PI/180;
+        double prev_rad = prev * CV_PI/180;
+        double avg_sin = prev_score * sin(prev_rad) + curr_score * sin(curr_rad);
+        double avg_cos = prev_score * cos(prev_rad) + curr_score * cos(curr_rad);
+        return ((avg_sin != 0 && avg_cos != 0) ? atan2(avg_sin, avg_cos) : (double) atan(0));
+    }
+    
+    
+}
+
+Ellipse merge_ellipses(vector<Ellipse> &accumulator, Ellipse new_ellipse, 
+    double center_distance_threshold, double semimajor_axis_threshold,
+    double semiminor_axis_threshold, double angle_threshold) 
+{
+    
+    Point curr_center = get<0>(new_ellipse);
+    double curr_maj = get<1>(new_ellipse);
+    double curr_min = get<2>(new_ellipse);
+    double curr_angle =  get<3>(new_ellipse);
+    int curr_score = get<4>(new_ellipse);
+
+    bool found_match = false;
+
+    int i;
+
+    for (i = 0; i < accumulator.size(); i++)
+    {
+        // Compare the new ellipse to previously found ellipses
+        Ellipse prev_ellipse = accumulator[i];
+
+        Point prev_center = get<0>(prev_ellipse);
+        double prev_maj = get<1>(prev_ellipse);
+        double prev_min = get<2>(prev_ellipse);
+        double prev_angle =  get<3>(prev_ellipse);
+        int prev_score = get<4>(prev_ellipse);
+
+        double center_dist = sqrt(pow(curr_center.x - prev_center.x, 2) + pow(curr_center.y - prev_center.y, 2));
+        double majax_dist = abs(prev_maj - curr_maj);
+        double minax_dist = abs(prev_min - curr_min);
+        double angle_dist = abs(prev_angle - curr_angle);
+
+        if (angle_dist > 180) 
+        {
+            angle_dist = 360 - angle_dist;
+        }
+
+        if (center_dist < center_distance_threshold && majax_dist < semimajor_axis_threshold && minax_dist < semiminor_axis_threshold && angle_dist < angle_threshold)
+        {
+            Ellipse weighted_ellipse = make_tuple(
+                Point(
+                    weighted_params(prev_center.x, curr_center.x, prev_score, curr_score, false),
+                    weighted_params(prev_center.y, curr_center.y, prev_score, curr_score, false)
+                    ),
+                weighted_params(prev_maj, curr_maj, prev_score, curr_score, false),
+                weighted_params(prev_min, curr_min, prev_score, curr_score, false),
+                weighted_params(prev_angle, curr_angle, 
+                    prev_score, curr_score, false),
+                prev_score + curr_score
+                );
+
+            accumulator[i] = weighted_ellipse;
+            return weighted_ellipse;
+        }
+
+    }
+
+    if (!found_match) 
+    {
+        accumulator.push_back(new_ellipse);
+        return new_ellipse;
+    }
+
+}
+
+
+tuple<vector<int>, vector<double>> calculate_ellipse_detection_threshold(Mat &image, Mat &mag, Mat &dir) {
+
+    // Thresholds for detection, iteration and quantisation
+    int detection_threshold = 200;
+    int major_pair_limit = 2;
+    int accuracy = 10;
+
+    vector<int> iteration_thresholds = {
+        detection_threshold, 
+        major_pair_limit,
+        accuracy
+    };
+
+    // Thresholds for minimum ellipse sizes
+    double min_major = 50;
+    double min_minor = 30;
+
+    // Thresholds for merging ellipses
+    double center_distance_threshold = 10;
+    double semimajor_axis_threshold = 30;
+    double semiminor_axis_threshold = 30;
+    double angle_threshold = 50;
+
+
+    vector<double> size_thresholds = {
+        min_major, 
+        min_minor,
+        center_distance_threshold,
+        semimajor_axis_threshold,
+        semiminor_axis_threshold,
+        angle_threshold
+    };
+
+    return make_tuple(iteration_thresholds, size_thresholds);
 }
 
 void drawEllipse(Mat &image, Mat thresholdedMag, 
-    vector<tuple<Point, double, double, double>> hough_ellipse) {
+    vector<Ellipse> hough_ellipse) {
 
     Mat image_clone = image.clone();
     Mat ellipses(image.size(), image.type(), Scalar(0));
@@ -236,9 +361,11 @@ Mat get_houghSpace(Mat &thresholdMag, Mat &gradientDirection, int width, int hei
     return hough_space;
 }
 
-vector<tuple<Point, double, double, double>> houghEllipse(Mat &thresholdMag, int width, int height, tuple<double, double, int> ellipses_thresholds) {
+vector<Ellipse> houghEllipse(Mat &thresholdMag, int width, int height, tuple<vector<int>, vector<double>> ellipses_thresholds) {
     // Hough Ellipse detection based on 
     // Xie, Yonghong, and Qiang Ji. "A new efficient ellipse detection method." Pattern Recognition, 2002. Proceedings. 16th International Conference on. Vol. 2. IEEE, 2002
+
+    srand( time( NULL ) );
 
     // Find all edges coordinates by using the thresholded magnitude
     vector<Point> locations;    
@@ -246,12 +373,19 @@ vector<tuple<Point, double, double, double>> houghEllipse(Mat &thresholdMag, int
     mag.convertTo(mag, CV_8U);
     findNonZero(mag, locations);
 
-    double min_major = get<0>(ellipses_thresholds);
-    double min_minor = get<1>(ellipses_thresholds);
-    int detection_threshold = get<2>(ellipses_thresholds);
+    int detection_threshold = get<0>(ellipses_thresholds)[0];
+    int major_pair_limit = get<0>(ellipses_thresholds)[1];
+    int accuracy = get<0>(ellipses_thresholds)[2];
 
-    // Stores found ecllipse in (x0, y0, a, b, alpha) format
-    vector<tuple<Point, double, double, double>> ellipse;
+    double min_major = get<1>(ellipses_thresholds)[0];
+    double min_minor = get<1>(ellipses_thresholds)[1];
+    double center_distance_threshold = get<1>(ellipses_thresholds)[2];
+    double semimajor_axis_threshold = get<1>(ellipses_thresholds)[3];
+    double semiminor_axis_threshold = get<1>(ellipses_thresholds)[4];
+    double angle_threshold = get<1>(ellipses_thresholds)[5];
+
+    // Stores found ecllipse in (x0, y0, a, b, alpha, score) format
+    vector<Ellipse> found_ellipse;
 
     // Iterate on all edge coordinates 
     for (int m = 0; m < locations.size() - 2; m++) {
@@ -260,11 +394,18 @@ vector<tuple<Point, double, double, double>> houghEllipse(Mat &thresholdMag, int
         int x1 = locations[m].x;
         int y1 = locations[m].y;
 
-        for (int n = m + 1; n < locations.size() - 1; n++) {
+        for (int n = 0; n < major_pair_limit; n++) {
+
+            // Get random choice of second pixel
+            int randomIndex = m;
+
+            while (randomIndex == m) {
+                randomIndex = rand() % locations.size();          
+            }
 
             // Get second pixel to lookup
-            int x2 = locations[n].x;
-            int y2 = locations[n].y;
+            int x2 = locations[randomIndex].x;
+            int y2 = locations[randomIndex].y;
 
             double major_axis = sqrt(pow(x1 - x2, 2) + pow(y1 - y2, 2));
             if (major_axis < min_major) continue;
@@ -283,11 +424,13 @@ vector<tuple<Point, double, double, double>> houghEllipse(Mat &thresholdMag, int
             int y0 = cvRound((y1 + y2)/2);
 
 
-            Mat accumulator(1,
-                (int)(sqrt(pow(width,2) + pow(height,2)) + 1), 
-                CV_64F);
+            Mat accumulator(2,
+                (int)((sqrt(pow(width,2) + pow(height,2)) + 1)/accuracy), 
+                CV_64F, Scalar(0));
 
-            for (int o = n + 1; o < locations.size(); o++) {
+            for (int o = m + 1; o < locations.size(); o++) {
+
+                if (o == randomIndex) continue;
 
                 // Get third pixel to lookup
                 int x = locations[o].x;
@@ -298,7 +441,7 @@ vector<tuple<Point, double, double, double>> houghEllipse(Mat &thresholdMag, int
                 if (d > a) continue;
 
                 // Get half-length of minor-axis (b)
-                double f_square = pow(x - x2, 2) + pow(y - y2, 2);
+                double f_square = pow(x - x1, 2) + pow(y - y1, 2);
                 double cos_tau_square = pow(
                     (pow(a,2) + pow(d,2) - f_square)/(2*a*d)
                     ,2);
@@ -306,8 +449,10 @@ vector<tuple<Point, double, double, double>> houghEllipse(Mat &thresholdMag, int
                 // Assume b > 0 and avoid division by 0
                 double k = pow(a,2) - pow(d,2) * cos_tau_square;
                 if (k > 0 && cos_tau_square < 1) {
-                    int b = cvRound(sqrt((pow(a,2) * pow(d,2) * (1 - cos_tau_square))/k));
-                    accumulator.at<double>(0, b)++;
+                    int b = cvRound(
+                        sqrt((pow(a,2) * pow(d,2) * (1 - cos_tau_square))/k)/accuracy
+                        );
+                    if (b > min_minor/accuracy) accumulator.at<double>(0, b)++;
                 }
                 
             }
@@ -317,17 +462,47 @@ vector<tuple<Point, double, double, double>> houghEllipse(Mat &thresholdMag, int
 
             // Adds ellipse if the maximum of the accumulator exceeds threshold
             minMaxLoc(accumulator, NULL, &max, NULL, &maxLoc);
-            if (max > detection_threshold) {
-                tuple<Point,double,double,double> params (Point(x0, y0), a, maxLoc.y, alpha);
-                ellipse.push_back(params);
+
+
+            Ellipse new_ellipse (Point(x0, y0), a, maxLoc.x * accuracy, alpha, max);
+
+
+            Mat mask(mag.size(), CV_8U, Scalar(0));
+
+            // Draw added ellipse on mask
+            Size axes(a, maxLoc.x * accuracy);
+
+            ellipse(mask, Point(x0, y0), axes, alpha, 0, 360,
+                Scalar(255),
+                2);
+
+            Mat new_mag;
+            mag.copyTo(new_mag, mask);
+
+            int count = countNonZero(new_mag);
+
+            
+            if (count > detection_threshold) 
+            {          
+                // Thresholds for accumulator merging
+                double center_distance_threshold = 10;
+                double semimajor_axis_threshold = 30;
+                double semiminor_axis_threshold = 30;
+                double angle_threshold = 50;
+                
+                merge_ellipses(
+                        found_ellipse, new_ellipse, 
+                        center_distance_threshold, semimajor_axis_threshold,
+                        semiminor_axis_threshold, angle_threshold
+                    );
+
             }
 
         }
     }
 
 
-
-    return ellipse;
+    return found_ellipse;
 }
 
 Mat convolution(Mat &input, int direction, Mat kernel, cv::Size image_size) {
