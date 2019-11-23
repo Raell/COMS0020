@@ -3,36 +3,140 @@
 #include <opencv/highgui.h>
 #include <opencv/cxcore.h>
 #include <math.h>
+#include <array>
 
 #define PI 3.14159265
 
-#define GRADIENT_THRESHOLD 200.0
+#define GRADIENT_THRESHOLD 200
 #define ANGLE_RANGE 20
 
 using namespace cv;
 using namespace std;
 
+class Line {
+public:
+    int rho;
+    int theta;
+
+    Line() : rho(0), theta(0) {}
+
+    Line(int rho, int theta) {
+        this->rho = rho;
+        this->theta = theta;
+    }
+};
+
+class Circle {
+public:
+    int x;
+    int y;
+    int r;
+
+    Circle() : x(0), y(0), r(0) {}
+
+    Circle(int x, int y, int r) {
+        this->x = x;
+        this->y = y;
+        this->r = r;
+    }
+
+    double area() {
+        return PI * pow(r, 2);
+    }
+};
+
+std::ostream &operator<<(std::ostream &strm, const Circle &circle) {
+    return strm << "Circle: x= " << circle.x << " y=" << circle.y << " r=" << circle.r;
+}
+
 Mat convolution(Mat &input, int direction, Mat kernel, cv::Size image_size);
 
-void drawLines(Mat &image, Mat thresholdedMag, std::vector<double> &rhoValues, std::vector<double> &thetaValues);
+void drawLines(Mat &image, Mat thresholdedMag, std::vector <Line> &detected_lines);
+void drawCircles(Mat &image, vector <Circle> &circles);
 
 Mat getMagnitude(Mat &dfdx, Mat &dfdy, cv::Size image_size);
-
 Mat getDirection(Mat &dfdx, Mat &dfdy, cv::Size image_size);
-
 void getThresholdedMag(Mat &input, Mat &output, double gradient_threshold);
+Mat get_houghSpaceLines(Mat &thresholdMag, Mat &gradientDirection, int width, int height);
 
-Mat get_houghSpace(Mat &thresholdMag, Mat &gradientDirection, int width, int height);
+vector <Line> collect_lines_from_houghSpace(Mat &houghSpace, double threshold);
 
-void collect_lines_from_houghSpace(Mat &houghSpace, std::vector<double> &rhoValues, std::vector<double> &thetaValues,
-                                   double threshold);
+double calculate_houghLines_voting_threshold(Mat &hough_space);
 
-double calculate_houghSpace_voting_threshold(Mat &hough_space) {
+double calculate_houghLines_voting_threshold(Mat &hough_space) {
     double max, min;
     cv::minMaxLoc(hough_space, &min, &max);
     double houghSpaceThreshold = min + ((max - min) / 2);
     return houghSpaceThreshold;
+}
 
+void drawCircles(Mat &image, vector <Circle> &circles) {
+    for (auto &c: circles) {
+        Point center(c.x, c.y);
+        cv::circle(image, center, c.r, Scalar(0, 0, 255), 2, 8, 0);
+    }
+
+    imwrite("result/foundCircles.jpg", image);
+}
+
+
+vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir, int voting_threshold) {
+
+    int radius = image.rows / 2;
+
+    int  rows{image.rows};
+    int  cols{image.cols};
+    int initialValue{0};
+
+
+    // Define 3 dimensional vector and initialize it.
+    //create a houghspace parameterized on circle centre (x,y) and radius (r)
+
+    std::vector<std::vector<std::vector<int>>> houghSpace(rows, std::vector<std::vector<int>>(cols, std::vector<int>(radius,initialValue)));
+
+    for (int y = 0; y < image.rows; y++) {
+        for (int x = 0; x < image.cols; x++) {
+
+
+            /* Results seem to be better without the thresholding filter...
+
+              if (thresholdMag.at<double>(y, x) == 0) {
+                continue;
+            }*/
+
+
+            for (int r = 0; r < radius; r++) {
+                int x0 = x - (int) (r * cos(gradient_dir.at<double>(y, x)));
+                int y0 = y - (int) (r * sin(gradient_dir.at<double>(y, x)));
+
+                //make sure the centre lies within the image
+                if (x0 >= 0 && x0 < image.cols && y0 >= 0 && y0 < image.rows) {
+                    houghSpace[y0][x0][r]++;
+                }
+
+                x0 = x + (int) (r * cos(gradient_dir.at<double>(y, x)));
+                y0 = y + (int) (r * sin(gradient_dir.at<double>(y, x)));
+                if (x0 >= 0 && x0 < image.cols && y0 >= 0 && y0 < image.rows) {
+                    houghSpace[y0][x0][r]++;
+                }
+
+            }
+        }
+    }
+    vector <Circle> circles;
+    for (int y = 0; y < image.rows; y++) {
+        for (int x = 0; x < image.cols; x++) {
+            for (int r = 0; r < radius; r++) {
+                if (houghSpace[y][x][r] > voting_threshold) {
+                    Circle c = Circle(x, y, r);
+                    circles.push_back(c);
+                }
+            }
+        }
+    }
+
+
+    return circles;
 }
 
 int main(int argc, const char **argv) {
@@ -58,6 +162,7 @@ int main(int argc, const char **argv) {
             1, 2, 1);
 
     Mat image_clone = imread(imgName, 1);
+    auto circle_frame = image_clone.clone();
 
     Mat dfdx = convolution(image, 0, dxKernel, image.size());
     Mat dfdy = convolution(image, 1, dyKernel, image.size());
@@ -70,33 +175,30 @@ int main(int argc, const char **argv) {
 
     getThresholdedMag(gradientMagnitude, thresholdedMag, GRADIENT_THRESHOLD);
 
-    Mat houghSpace = get_houghSpace(thresholdedMag, gradientDirection, image.cols, image.rows);
+    Mat houghSpace = get_houghSpaceLines(thresholdedMag, gradientDirection, image.cols, image.rows);
 
-    double houghSpaceThreshold = calculate_houghSpace_voting_threshold(houghSpace);
+    auto houghLinesThreshold = calculate_houghLines_voting_threshold(houghSpace);
+    auto lines = collect_lines_from_houghSpace(houghSpace, houghLinesThreshold);
 
-    std::vector<double> rho;
-    std::vector<double> theta;
-
-    collect_lines_from_houghSpace(houghSpace, rho, theta, houghSpaceThreshold);
-
-    drawLines(image_clone, thresholdedMag, rho, theta);
+    drawLines(image_clone, thresholdedMag, lines);
+    auto circles = houghCircles(circle_frame, thresholdedMag, gradientDirection, 30);
+    drawCircles(circle_frame, circles);
 
     return 0;
 }
 
-void drawLines(Mat &image, Mat thresholdedMag, std::vector<double> &rhoValues, std::vector<double> &thetaValues) {
+void drawLines(Mat &image, Mat thresholdedMag, std::vector <Line> &detected_lines) {
 
     Mat lines(image.size(), image.type(), Scalar(0));
     int width = image.cols;
     int height = image.rows;
     int centreX = image.cols / 2;
     int centreY = image.rows / 2;
-
-    for (int i = 0; i < rhoValues.size(); i++) {
+    for (int i = 0; i < detected_lines.size(); i++) {
 
         Point point1, point2;
-        double theta = thetaValues[i];
-        double rho = rhoValues[i];
+        double theta = detected_lines[i].theta;
+        double rho = detected_lines[i].rho;
 
         double radians = theta * (PI / 180);
 
@@ -127,20 +229,20 @@ void drawLines(Mat &image, Mat thresholdedMag, std::vector<double> &rhoValues, s
     imwrite("result/foundLines.jpg", image);
 }
 
-void collect_lines_from_houghSpace(Mat &houghSpace, std::vector<double> &rhoValues, std::vector<double> &thetaValues,
-                                   double threshold) {
+vector <Line> collect_lines_from_houghSpace(Mat &houghSpace,
+                                            double threshold) {
     /*
      * Populates the line vectors, and thresholds the houghspace.
      */
+    std::vector <Line> lines;
 
     for (int y = 0; y < houghSpace.rows; y++) {
         for (int x = 0; x < houghSpace.cols; x++) {
             double val = houghSpace.at<double>(y, x);
 
             if (val > threshold) {
-                rhoValues.push_back(y);
-                thetaValues.push_back(x);
-                //   std::cout << x << " ";
+                Line l = Line(y, x);
+                lines.push_back(l);
                 houghSpace.at<double>(y, x) = 255;
             } else {
                 houghSpace.at<double>(y, x) = 0.0;
@@ -148,9 +250,10 @@ void collect_lines_from_houghSpace(Mat &houghSpace, std::vector<double> &rhoValu
         }
     }
     imwrite("result/houghSpace.jpg", houghSpace);
+    return lines;
 }
 
-Mat get_houghSpace(Mat &thresholdMag, Mat &gradientDirection, int width, int height) {
+Mat get_houghSpaceLines(Mat &thresholdMag, Mat &gradientDirection, int width, int height) {
 
     Mat hough_space;
     hough_space.create(2 * (width + height), 360, CV_64F);
@@ -159,7 +262,7 @@ Mat get_houghSpace(Mat &thresholdMag, Mat &gradientDirection, int width, int hei
     for (int y = 0; y < thresholdMag.rows; y++) {
         for (int x = 0; x < thresholdMag.cols; x++) {
             double value = thresholdMag.at<double>(y, x);
-            if (value > 250) {
+            if (value == 255.0) {
                 double direction = gradientDirection.at<double>(y, x);
                 double direction_angle;
                 if (direction > 0) {
