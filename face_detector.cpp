@@ -68,12 +68,15 @@ float f1_test(vector <Rect> &detected, vector <Rect> &ground_truth, float thresh
         bool matchFound = false;
         for (int j = 0; j < ground_truth.size(); j++) {
             Rect intersection = detected[i] & ground_truth[j];
+            Rect box_union = detected[i] | ground_truth[j];
             float intersectionArea = intersection.area();
+            float unionArea = box_union.area();
             if (intersectionArea > 0) {
-                float matchPercentage = (intersectionArea / ground_truth[j].area()) * 100;
+                float matchPercentage = (intersectionArea / unionArea) * 100;
                 if (matchPercentage > threshold) {
                     truePositives++;
                     matchFound = true;
+                    cout << intersectionArea << endl;
                     break;
                 }
             }
@@ -90,7 +93,18 @@ float f1_test(vector <Rect> &detected, vector <Rect> &ground_truth, float thresh
 
     float precision = (float) truePositives / ((float) truePositives + (float) falsePositives);
     float recall = (float) truePositives / (float) ground_truth.size();
-    float f1 = 2 * ((precision * recall) / (precision + recall));
+    float f1;
+    if (precision > 0 && recall > 0) {
+        f1 = 2 * ((precision * recall) / (precision + recall));
+    }
+    else if (precision == 0 && recall == 0) {
+        f1 = 0;
+    }
+    else {
+        f1 = nan("");
+    }
+    
+    cout << "TPR: " << recall << "\n";
     cout << "f1 score: " << f1 << "\n";
     return f1;
 }
@@ -132,7 +146,7 @@ int main(int argc, const char **argv) {
     string csv_file_path = get_csv_file(imgName);
     vector <Rect> ground_truths = getGroundTruthsFromCSV(csv_file_path);
     vector <Rect> detected = detectAndDisplay(frame);
-    f1_test(detected, ground_truths, 10.0);
+    f1_test(detected, ground_truths, 30.0);
     imwrite("face_detected.jpg", frame);
 }
 

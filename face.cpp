@@ -37,8 +37,16 @@ int main( int argc, const char** argv )
 	// 3. Detect Faces and Display Result
 	detectAndDisplay( frame );
 
+	std::string filename(argv[1]);
+
+    string::size_type i = filename.rfind('.', filename.length());
+    if (i != string::npos) {
+        filename.replace(i, 4, "");
+    }
+
+
 	// 4. Save Result Image
-	imwrite( "detected.jpg", frame );
+	imwrite("detected.jpg", frame );
 
 	return 0;
 }

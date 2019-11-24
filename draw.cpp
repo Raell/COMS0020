@@ -39,10 +39,10 @@ int main(int argc, const char **argv) {
         imgNameString.replace(i, fileExtension.length(), fileExtension);
     }
 
-    const char *c = (filePrefix + imgNameString).c_str();
-    ifstream inputFile(c);
+    const string c = filePrefix + imgNameString;
+    ifstream inputFile(c.c_str());
 
-    cout << filePrefix + imgNameString;
+    cout << c << endl;
 
     if (inputFile.peek() == std::ifstream::traits_type::eof()) {
         std::cout << "No CSV file found. F1 score cannot be calculated" << '\n';
@@ -71,7 +71,16 @@ int main(int argc, const char **argv) {
                   Scalar(0, 0, 255), 2);
     }
 
-    imwrite("annotated.jpg", frame);
+    std::string filename(imgName);
+
+    string::size_type k = filename.rfind('.', filename.length());
+    if (k != string::npos) {
+        filename.replace(k, 4, "");
+    }
+
+
+    // 4. Save Result Image
+    imwrite( filename + "annotated.jpg", frame );
 
     return 0;
 
