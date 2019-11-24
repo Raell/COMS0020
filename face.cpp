@@ -21,7 +21,7 @@ using namespace cv;
 void detectAndDisplay( Mat frame );
 
 /** Global variables */
-String cascade_name = "dartcascade/cascade.xml";
+String cascade_name = "dartcascade/best.xml";
 CascadeClassifier cascade;
 
 
@@ -46,7 +46,7 @@ int main( int argc, const char** argv )
 
 
 	// 4. Save Result Image
-	imwrite("detected.jpg", frame );
+	imwrite( filename + "detected.jpg", frame );
 
 	return 0;
 }
