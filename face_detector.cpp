@@ -90,18 +90,19 @@ float f1_test(vector <Rect> &detected, vector <Rect> &ground_truth, float thresh
     // Precision = TP / (TP + FP)
     // Recall = TPR (True Positive Rate)
     // F1 = 2((PRE * REC)/(PRE + REC))
+    int falseNegatives = ground_truth.size() - truePositives;
 
     float precision = (float) truePositives / ((float) truePositives + (float) falsePositives);
     float recall = (float) truePositives / (float) ground_truth.size();
     float f1;
     if (precision > 0 && recall > 0) {
-        f1 = 2 * ((precision * recall) / (precision + recall));
+        f1 = 2 * (precision * recall) / (precision + recall);
     }
-    else if (precision == 0 && recall == 0) {
-        f1 = 0;
+    else if (!truePositives && !falsePositives && !falseNegatives) {
+        f1 = 1;
     }
     else {
-        f1 = nan("");
+        f1 = 0;
     }
     
     cout << "TPR: " << recall << "\n";
