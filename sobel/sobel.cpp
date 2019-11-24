@@ -49,6 +49,9 @@ std::ostream &operator<<(std::ostream &strm, const Circle &circle) {
     return strm << "Circle: x= " << circle.x << " y=" << circle.y << " r=" << circle.r;
 }
 
+String CASCADE_NAME = "frontalface.xml";
+CascadeClassifier cascade;
+
 Mat convolution(Mat &input, int direction, Mat kernel, cv::Size image_size);
 
 void drawLines(Mat &image, Mat thresholdedMag, std::vector <Line> &detected_lines);
@@ -137,6 +140,17 @@ vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir, i
 
 
     return circles;
+}
+
+void pipeline() {
+
+    /*
+    - Use viola-jone dartboard classifier to get bounding boxes
+    - For each rectangle, apply hough-transform and determine # of the circles and lines
+    - Use heuristic algorithm to predict the existence of a dartboard in the given dartboard
+     */
+
+
 }
 
 int main(int argc, const char **argv) {
