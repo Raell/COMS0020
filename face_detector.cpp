@@ -42,7 +42,7 @@ vector <Rect> getGroundTruthsFromCSV(string csv) {
     vector <Rect> ground_truths;
     string current_line;
     ifstream inputFile(c);
-    if (inputFile.peek() == std::ifstream::traits_type::eof()) {
+    if (!inputFile.good()) {
         std::cout << "No CSV file found. F1 score cannot be calculated" << '\n';
         exit(EXIT_FAILURE);
 
@@ -100,9 +100,11 @@ float f1_test(vector <Rect> &detected, vector <Rect> &ground_truth, float thresh
     }
     else if (!truePositives && !falsePositives && !falseNegatives) {
         f1 = 1;
+        recall = 1;
     }
     else {
         f1 = 0;
+        recall = 0;
     }
     
     cout << "TPR: " << recall << "\n";
