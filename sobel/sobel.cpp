@@ -52,6 +52,11 @@ std::ostream &operator<<(std::ostream &strm, const Circle &circle) {
 String CASCADE_NAME = "frontalface.xml";
 CascadeClassifier cascade;
 
+vector <Rect> getGroundTruthsFromCSV(string csv);
+string get_csv_file(const char *imgName);
+vector <Rect> detectAndDisplay(Mat frame);
+float f1_test(vector <Rect> &detected, vector <Rect> &actual, float threshold);
+
 Mat convolution(Mat &input, int direction, Mat kernel, cv::Size image_size);
 
 void drawLines(Mat &image, Mat thresholdedMag, std::vector <Line> &detected_lines);
@@ -82,20 +87,20 @@ void drawCircles(Mat &image, vector <Circle> &circles) {
     imwrite("result/foundCircles.jpg", image);
 }
 
-
 vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir, int voting_threshold) {
 
     int radius = image.rows / 2;
 
-    int  rows{image.rows};
-    int  cols{image.cols};
+    int rows{image.rows};
+    int cols{image.cols};
     int initialValue{0};
 
 
     // Define 3 dimensional vector and initialize it.
     //create a houghspace parameterized on circle centre (x,y) and radius (r)
 
-    std::vector<std::vector<std::vector<int>>> houghSpace(rows, std::vector<std::vector<int>>(cols, std::vector<int>(radius,initialValue)));
+    std::vector < std::vector < std::vector < int >> >
+    houghSpace(rows, std::vector < std::vector < int >> (cols, std::vector<int>(radius, initialValue)));
 
     for (int y = 0; y < image.rows; y++) {
         for (int x = 0; x < image.cols; x++) {
@@ -138,19 +143,25 @@ vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir, i
         }
     }
 
-
     return circles;
 }
 
-void pipeline() {
+void pipeline(vector <Rect> &violaJonesDetections, Mat &frame) {
 
-    /*
-    - Use viola-jone dartboard classifier to get bounding boxes
-    - For each rectangle, apply hough-transform and determine # of the circles and lines
-    - Use heuristic algorithm to predict the existence of a dartboard in the given dartboard
-     */
+    //init kernels
+    Mat dxKernel = (Mat_<double>(3, 3) << -1, 0, 1,
+            -2, 0, 2,
+            -1, 0, 1);
 
+    Mat dyKernel = (Mat_<double>(3, 3) << -1, -2, -1,
+            0, 0, 0,
+            1, 2, 1);
+    for (auto &rect: violaJonesDetections) {
+        auto violaJonesFrame = frame(rect);
 
+    }
+
+    int dartboardCounter = 0;
 }
 
 int main(int argc, const char **argv) {
@@ -435,4 +446,73 @@ void getThresholdedMag(Mat &input, Mat &output, double gradient_threshold) {
     }
 
     imwrite("result/thresholded.jpg", output);
+}
+
+vector <Rect> detectAndDisplay(Mat frame) {
+    Mat frame_gray;
+    vector <Rect> detected;
+
+    // 1. Prepare Image by turning it into Grayscale and normalising lighting
+    cvtColor(frame, frame_gray, CV_BGR2GRAY);
+    equalizeHist(frame_gray, frame_gray);
+
+    // 2. Perform Viola-Jones Object Detection
+    cascade.detectMultiScale(frame_gray, detected, 1.1, 1, 0 | CV_HAAR_SCALE_IMAGE, Size(50, 50), Size(500, 500));
+
+    // 3. Print number of Faces found
+    cout << "faces detected: " << detected.size() << std::endl;
+
+    // 4. Draw box around faces found
+    for (int i = 0; i < detected.size(); i++) {
+        rectangle(frame, Point(detected[i].x, detected[i].y),
+                  Point(detected[i].x + detected[i].width, detected[i].y + detected[i].height),
+                  Scalar(0, 255, 0), 2);
+    }
+    return detected;
+}
+
+float f1_test(vector <Rect> &detected, vector <Rect> &ground_truth, float threshold) {
+    int truePositives = 0;
+    int falsePositives = 0;
+    for (int i = 0; i < detected.size(); i++) {
+        bool matchFound = false;
+        for (int j = 0; j < ground_truth.size(); j++) {
+            Rect intersection = detected[i] & ground_truth[j];
+            Rect box_union = detected[i] | ground_truth[j];
+            float intersectionArea = intersection.area();
+            float unionArea = box_union.area();
+            if (intersectionArea > 0) {
+                float matchPercentage = (intersectionArea / unionArea) * 100;
+                if (matchPercentage > threshold) {
+                    truePositives++;
+                    matchFound = true;
+                    cout << intersectionArea << endl;
+                    break;
+                }
+            }
+        }
+        if (!matchFound) {
+            falsePositives++;
+        }
+    }
+    std::cout << "true positives: " << truePositives << ", false positives: " << falsePositives << "\n";
+
+    // Precision = TP / (TP + FP)
+    // Recall = TPR (True Positive Rate)
+    // F1 = 2((PRE * REC)/(PRE + REC))
+
+    float precision = (float) truePositives / ((float) truePositives + (float) falsePositives);
+    float recall = (float) truePositives / (float) ground_truth.size();
+    float f1;
+    if (precision > 0 && recall > 0) {
+        f1 = 2 * ((precision * recall) / (precision + recall));
+    } else if (precision == 0 && recall == 0) {
+        f1 = 0;
+    } else {
+        f1 = nan("");
+    }
+
+    cout << "TPR: " << recall << "\n";
+    cout << "f1 score: " << f1 << "\n";
+    return f1;
 }
