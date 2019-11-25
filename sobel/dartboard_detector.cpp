@@ -177,7 +177,6 @@ void pipeline(Mat &frame) {
         rect += inflationPoint;
         rect += inflationSize;
 
-
         auto rgb_viola_jones = frame(rect);
         Mat gray_viola_jones;
         cvtColor(rgb_viola_jones, gray_viola_jones, CV_BGR2GRAY);
@@ -199,13 +198,11 @@ void pipeline(Mat &frame) {
 
         cout << "cirlces detected " << circles.size();
 
-        Mat houghSpace = get_houghSpaceLines(thresholdedMag, gradientDirection, gray_viola_jones.cols,
-                                             gray_viola_jones.rows);
+        auto houghSpace = get_houghSpaceLines(thresholdedMag, gradientDirection, gray_viola_jones.cols,
+                                              gray_viola_jones.rows);
 
         auto houghLinesThreshold = calculate_houghLines_voting_threshold(houghSpace);
         auto lines = collect_lines_from_houghSpace(houghSpace, houghLinesThreshold);
-        auto houghLines = get_houghSpaceLines(thresholdedMag, gradientDirection, gray_viola_jones.cols,
-                                              gray_viola_jones.rows);
 
         cout << "lines detected " << lines.size();
 
