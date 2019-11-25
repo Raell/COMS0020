@@ -7,7 +7,7 @@
 
 #define PI 3.14159265
 
-#define GRADIENT_THRESHOLD 150
+#define GRADIENT_THRESHOLD 200
 #define ANGLE_RANGE 20
 
 using namespace cv;
@@ -87,6 +87,12 @@ void drawCircles(Mat &image, vector <Circle> &circles) {
     imwrite("result/foundCircles.jpg", image);
 }
 
+void translate_circle_pos(Mat &orig_image, Mat &bounding_box, vector <Circle> &circles) {
+    for (auto &c: circles) {
+    }
+
+}
+
 vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir, int voting_threshold) {
 
     int radius = image.rows / 2;
@@ -162,41 +168,50 @@ void pipeline(Mat &frame) {
 
     imwrite("result/violaJonesDetections.jpg", frame);
 
-    cvtColor(frame, frame, CV_BGR2GRAY);
-
     //for every detection, apply hough transform to find the number of circles and lines
     for (auto &rect: violaJonesDetections) {
-        auto violaJonesFrame = frame(rect);
-        Mat dfdx = convolution(violaJonesFrame, 0, dxKernel, violaJonesFrame.size());
-        Mat dfdy = convolution(violaJonesFrame, 1, dyKernel, violaJonesFrame.size());
 
-        Mat gradientMagnitude = getMagnitude(dfdx, dfdy, violaJonesFrame.size());
-        Mat gradientDirection = getDirection(dfdx, dfdy, violaJonesFrame.size());
+        //expand the rectangle
+        cv::Point inflationPoint(-20, -20);
+        cv::Size inflationSize(20, 20);
+        rect += inflationPoint;
+        rect += inflationSize;
+
+
+        auto rgb_viola_jones = frame(rect);
+        Mat gray_viola_jones;
+        cvtColor(rgb_viola_jones, gray_viola_jones, CV_BGR2GRAY);
+
+        Mat dfdx = convolution(gray_viola_jones, 0, dxKernel, gray_viola_jones.size());
+        Mat dfdy = convolution(gray_viola_jones, 1, dyKernel, gray_viola_jones.size());
+
+        Mat gradientMagnitude = getMagnitude(dfdx, dfdy, gray_viola_jones.size());
+        Mat gradientDirection = getDirection(dfdx, dfdy, gray_viola_jones.size());
 
         Mat thresholdedMag;
-        thresholdedMag.create(violaJonesFrame.size(), CV_64F);
+        thresholdedMag.create(gray_viola_jones.size(), CV_64F);
 
         getThresholdedMag(gradientMagnitude, thresholdedMag, GRADIENT_THRESHOLD);
-        auto circles = houghCircles(violaJonesFrame, thresholdedMag, gradientDirection, 30);
-
+        auto circles = houghCircles(gray_viola_jones, thresholdedMag, gradientDirection, 20);
 
         if (circles.size() == 0) continue;
-        drawCircles(frame, circles);
+        drawCircles(rgb_viola_jones, circles);
 
         cout << "cirlces detected " << circles.size();
 
-        Mat houghSpace = get_houghSpaceLines(thresholdedMag, gradientDirection, violaJonesFrame.cols,
-                                             violaJonesFrame.rows);
+        Mat houghSpace = get_houghSpaceLines(thresholdedMag, gradientDirection, gray_viola_jones.cols,
+                                             gray_viola_jones.rows);
 
         auto houghLinesThreshold = calculate_houghLines_voting_threshold(houghSpace);
         auto lines = collect_lines_from_houghSpace(houghSpace, houghLinesThreshold);
-        auto houghLines = get_houghSpaceLines(thresholdedMag, gradientDirection, violaJonesFrame.cols,
-                                              violaJonesFrame.rows);
+        auto houghLines = get_houghSpaceLines(thresholdedMag, gradientDirection, gray_viola_jones.cols,
+                                              gray_viola_jones.rows);
 
-        drawLines(violaJonesFrame, thresholdedMag, lines);
+        cout << "lines detected " << lines.size();
 
+        drawLines(rgb_viola_jones, thresholdedMag, lines);
     }
-
+    imwrite("result/detections.jpg", frame);
 }
 
 int main(int argc, const char **argv) {
@@ -210,46 +225,7 @@ int main(int argc, const char **argv) {
     // imshow( "Original Image", image );
 
 
-
-  cvtColor(image, image, CV_BGR2GRAY);
-
-
-
-
-
-    //init kernels
-    Mat dxKernel = (Mat_<double>(3, 3) << -1, 0, 1,
-            -2, 0, 2,
-            -1, 0, 1);
-
-    Mat dyKernel = (Mat_<double>(3, 3) << -1, -2, -1,
-            0, 0, 0,
-            1, 2, 1);
-
-    Mat image_clone = imread(imgName, 1);
-    auto circle_frame = image_clone.clone();
-
-    Mat dfdx = convolution(image, 0, dxKernel, image.size());
-    Mat dfdy = convolution(image, 1, dyKernel, image.size());
-
-    Mat gradientMagnitude = getMagnitude(dfdx, dfdy, image.size());
-    Mat gradientDirection = getDirection(dfdx, dfdy, image.size());
-
-    Mat thresholdedMag;
-    thresholdedMag.create(image.size(), CV_64F);
-
-    getThresholdedMag(gradientMagnitude, thresholdedMag, GRADIENT_THRESHOLD);
-
-    Mat houghSpace = get_houghSpaceLines(thresholdedMag, gradientDirection, image.cols, image.rows);
-
-    auto houghLinesThreshold = calculate_houghLines_voting_threshold(houghSpace);
-    auto lines = collect_lines_from_houghSpace(houghSpace, houghLinesThreshold);
-
-    drawLines(image_clone, thresholdedMag, lines);
-    auto circles = houghCircles(circle_frame, thresholdedMag, gradientDirection, 30);
-    drawCircles(circle_frame, circles);
-
-    return 0;
+    pipeline(image);
 }
 
 void drawLines(Mat &image, Mat thresholdedMag, std::vector <Line> &detected_lines) {
@@ -281,6 +257,7 @@ void drawLines(Mat &image, Mat thresholdedMag, std::vector <Line> &detected_line
 
         line(lines, point1, point2, Scalar(0, 0, 255), 1);
         line(image, point1, point2, Scalar(0, 0, 255), 1);
+
     }
 
     thresholdedMag.convertTo(thresholdedMag, CV_8U);
@@ -508,7 +485,7 @@ vector <Rect> detectAndDisplay(Mat frame) {
     cascade.detectMultiScale(frame_gray, detected, 1.1, 1, 0 | CV_HAAR_SCALE_IMAGE, Size(50, 50), Size(500, 500));
 
     // 2.5 Merge overlapping rectangles
-    // groupRectangles(detected, 3, 0.8);
+    groupRectangles(detected, 1, 0.8);
 
 
     // 3. Print number of Faces found
