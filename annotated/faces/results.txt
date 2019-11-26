@@ -1,0 +1,96 @@
+dart11.jpg
+total detected: 1, ground truth: 1
+true positives: 1, false positives: 0
+TPR: 1
+f1 score: 1
+
+dart14.jpg
+total detected: 6, ground truth: 2
+true positives: 2, false positives: 4
+TPR: 1
+f1 score: 0.5
+
+dart3.jpg
+total detected: 0, ground truth: 0
+true positives: 0, false positives: 0
+TPR: 1
+f1 score: 1
+
+dart4.jpg
+total detected: 1, ground truth: 1
+true positives: 1, false positives: 0
+TPR: 1
+f1 score: 1
+
+dart9.jpg
+total detected: 4, ground truth: 1
+true positives: 1, false positives: 3
+TPR: 1
+f1 score: 0.4
+
+dart12.jpg
+total detected: 0, ground truth: 0
+true positives: 0, false positives: 0
+TPR: 1
+f1 score: 1
+
+dart13.jpg
+total detected: 2, ground truth: 1
+true positives: 1, false positives: 1
+TPR: 1
+f1 score: 0.666667
+
+dart15.jpg
+total detected: 4, ground truth: 0
+true positives: 0, false positives: 4
+TPR: 0
+f1 score: 0
+
+dart2.jpg
+total detected: 0, ground truth: 0
+true positives: 0, false positives: 0
+TPR: 1
+f1 score: 1
+
+dart10.jpg
+total detected: 4, ground truth: 0
+true positives: 0, false positives: 4
+TPR: 0
+f1 score: 0
+
+dart6.jpg
+total detected: 4, ground truth: 1
+true positives: 0, false positives: 4
+TPR: 0
+f1 score: 0
+
+dart1.jpg
+total detected: 0, ground truth: 0
+true positives: 0, false positives: 0
+TPR: 1
+f1 score: 1
+
+dart7.jpg
+total detected: 1, ground truth: 1
+true positives: 1, false positives: 0
+TPR: 1
+f1 score: 1
+
+dart5.jpg
+total detected: 14, ground truth: 11
+true positives: 11, false positives: 3
+TPR: 1
+f1 score: 0.88
+
+dart8.jpg
+total detected: 2, ground truth: 0
+true positives: 0, false positives: 2
+TPR: 0
+f1 score: 0
+
+dart0.jpg
+total detected: 3, ground truth: 0
+true positives: 0, false positives: 3
+TPR: 0
+f1 score: 0
+
