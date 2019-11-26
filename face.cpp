@@ -29,7 +29,6 @@ using namespace cv;
 /** Function Headers */
 vector<Rect> detectAndDisplay( Mat frame, vector<Rect> ground_truths, bool merge_boxes);
 vector<Rect> merge_boxes(const vector<Rect> faces);
-void read_directory(const std::string& name, Vector<string>& v);
 float f1_test(vector <Rect> &detected, vector <Rect> &ground_truth, string output, string img_name, float threshold);
 vector<Rect> getGroundTruthsFromCSV(string csv);
 string get_csv_file(const string fileExtension, const string filePrefix, const string imgName);
@@ -86,7 +85,9 @@ int main( int argc, const char** argv )
 
     // Read the input folder
     Vector<string> files;
-    read_directory(input_folder, files);
+    for (int i = 0; i <= 15; i++) {
+    	files.push_back("dart" + to_string(i) + ".jpg");
+    }
 
     string results_output = output_folder + "results.txt";
 	// Clear file if exists
@@ -157,21 +158,6 @@ vector<Rect> detectAndDisplay( Mat frame, vector<Rect> ground_truths, bool merge
 	return boxes;
 
 
-}
-
-void read_directory(const std::string& name, Vector<string>& v)
-{
-    // Find files from directory
-    DIR* dirp = opendir(name.c_str());
-    struct dirent * dp;
-    while ((dp = readdir(dirp)) != NULL) {
-    	if (strcmp(dp->d_name, ".") != 0 && strcmp(dp->d_name, "..") != 0) 
-    	{ 
-    		v.push_back(dp->d_name);
-    	}
-       
-    }
-    closedir(dirp);
 }
 
 vector<Rect> merge_boxes(const vector<Rect> boxes) 
