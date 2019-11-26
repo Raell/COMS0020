@@ -70,6 +70,13 @@ Mat get_houghSpaceLines(Mat &thresholdMag, Mat &gradientDirection, int width, in
 vector <Line> collect_lines_from_houghSpace(Mat &houghSpace, double threshold);
 
 double calculate_houghLines_voting_threshold(Mat &hough_space);
+double calculate_houghCircles_voting_threshold(std::vector < std::vector < std::vector < int >> > &hough_space);
+
+double calculate_houghCircles_voting_threshold(std::vector < std::vector < std::vector < int >> > &hough_space) {
+    return 20;
+}
+
+void pipeline(Mat &frame);
 
 double calculate_houghLines_voting_threshold(Mat &hough_space) {
     double max, min;
@@ -85,12 +92,6 @@ void drawCircles(Mat &image, vector <Circle> &circles) {
     }
 
     imwrite("result/foundCircles.jpg", image);
-}
-
-void translate_circle_pos(Mat &orig_image, Mat &bounding_box, vector <Circle> &circles) {
-    for (auto &c: circles) {
-    }
-
 }
 
 vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir, int voting_threshold) {
@@ -163,15 +164,15 @@ void pipeline(Mat &frame) {
             1, 2, 1);
 
 
-    //get viola-jones detections and draws then in GREEN.
+    //get viola-jones detections and draw then in GREEN.
     auto violaJonesDetections = detectAndDisplay(frame);
 
     imwrite("result/violaJonesDetections.jpg", frame);
 
-    //for every detection, apply hough transform to find the number of circles and lines
+    //for every detection, apply hough transforms to find the number of circles and lines
     for (auto &rect: violaJonesDetections) {
 
-        //expand the rectangle
+        //expand the rectangle to retain contextual info around the edges
         cv::Point inflationPoint(-20, -20);
         cv::Size inflationSize(20, 20);
         rect += inflationPoint;
@@ -189,25 +190,28 @@ void pipeline(Mat &frame) {
 
         Mat thresholdedMag;
         thresholdedMag.create(gray_viola_jones.size(), CV_64F);
-
         getThresholdedMag(gradientMagnitude, thresholdedMag, GRADIENT_THRESHOLD);
-        auto circles = houghCircles(gray_viola_jones, thresholdedMag, gradientDirection, 20);
 
-        if (circles.size() == 0) continue;
+        auto circles = houghCircles(gray_viola_jones, thresholdedMag, gradientDirection, 25);
         drawCircles(rgb_viola_jones, circles);
-
-        cout << "cirlces detected " << circles.size();
+        cout << "circles detected " << circles.size() << std::endl;
 
         auto houghSpace = get_houghSpaceLines(thresholdedMag, gradientDirection, gray_viola_jones.cols,
                                               gray_viola_jones.rows);
-
         auto houghLinesThreshold = calculate_houghLines_voting_threshold(houghSpace);
         auto lines = collect_lines_from_houghSpace(houghSpace, houghLinesThreshold);
-
-        cout << "lines detected " << lines.size();
-
+        cout << "lines detected " << lines.size() << std::endl;
         drawLines(rgb_viola_jones, thresholdedMag, lines);
+
+
+        //TODO: write a heuristic algorithm (based on the positions of the circles and lines)
+        // to determine the existence of a dartboard  within the current bounding box
+
+        cout << "######################" << std::endl;
     }
+
+    //TODO: Load ground truths and keep track of TP, FP etc to compute F1-score.
+
     imwrite("result/detections.jpg", frame);
 }
 
@@ -218,11 +222,8 @@ int main(int argc, const char **argv) {
     Mat image;
     image = imread(imgName, 1);
 
-    // namedWindow( "Original Image", CV_WINDOW_AUTOSIZE );
-    // imshow( "Original Image", image );
-
-
     pipeline(image);
+    return 0;
 }
 
 void drawLines(Mat &image, Mat thresholdedMag, std::vector <Line> &detected_lines) {
@@ -271,7 +272,7 @@ void drawLines(Mat &image, Mat thresholdedMag, std::vector <Line> &detected_line
 vector <Line> collect_lines_from_houghSpace(Mat &houghSpace,
                                             double threshold) {
     /*
-     * Populates the line vectors, and thresholds the houghspace.
+     * Populates the line vector & thresholds the houghspace.
      */
     std::vector <Line> lines;
 
