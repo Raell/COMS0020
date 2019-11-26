@@ -4,6 +4,7 @@
 #include <opencv/cxcore.h>
 #include <math.h>
 #include <array>
+#include <unordered_set>
 
 #define PI 3.14159265
 
@@ -173,8 +174,8 @@ void pipeline(Mat &frame) {
     for (auto &rect: violaJonesDetections) {
 
         //expand the rectangle to retain contextual info around the edges
-        cv::Point inflationPoint(-20, -20);
-        cv::Size inflationSize(20, 20);
+        cv::Point inflationPoint(-10, -10);
+        cv::Size inflationSize(10, 10);
         rect += inflationPoint;
         rect += inflationSize;
 
@@ -463,6 +464,34 @@ void getThresholdedMag(Mat &input, Mat &output, double gradient_threshold) {
     imwrite("result/thresholded.jpg", output);
 }
 
+vector <Rect> mergeDetections(vector <Rect> &detected) {
+    std::vector <Rect> singles;
+    std::vector <Rect> overlaps;
+    for (auto rect_1: detected) {
+        bool isSingle = true;
+        for (auto rect_2: detected) {
+            if (rect_1 == rect_2) {
+                continue;
+            }
+            bool intersects = ((rect_1 & rect_2).area() > 0);
+            if (intersects) {
+                isSingle = false;
+                break;
+            }
+        }
+        if (isSingle) {
+            singles.push_back(rect_1);
+        } else {
+            overlaps.push_back(rect_1);
+        }
+    }
+    groupRectangles(overlaps, 1, 0.8);
+    for (auto r: singles) {
+        overlaps.push_back(r);
+    }
+    return overlaps;
+}
+
 vector <Rect> detectAndDisplay(Mat frame) {
     Mat frame_gray;
     vector <Rect> detected;
@@ -482,20 +511,27 @@ vector <Rect> detectAndDisplay(Mat frame) {
     // 2. Perform Viola-Jones Object Detection
     cascade.detectMultiScale(frame_gray, detected, 1.1, 1, 0 | CV_HAAR_SCALE_IMAGE, Size(50, 50), Size(500, 500));
 
+    cout << "size before merging: " << detected.size() << std::endl;
+
     // 2.5 Merge overlapping rectangles
-    groupRectangles(detected, 1, 0.8);
+    auto merged = mergeDetections(detected);
+
+    cout << "Size after merging: " << merged.size();
+
+    // cout << "size after  merging: " << detected.size() << std::endl;
+
 
 
     // 3. Print number of Faces found
-    cout << "dartboards detected: " << detected.size() << std::endl;
+    cout << "dartboards detected: " << merged.size() << std::endl;
 
     // 4. Draw box around faces found
-    for (int i = 0; i < detected.size(); i++) {
-        rectangle(frame, Point(detected[i].x, detected[i].y),
-                  Point(detected[i].x + detected[i].width, detected[i].y + detected[i].height),
+    for (int i = 0; i < merged.size(); i++) {
+        rectangle(frame, Point(merged[i].x, merged[i].y),
+                  Point(merged[i].x + merged[i].width, merged[i].y + merged[i].height),
                   Scalar(0, 255, 0), 2);
     }
-    return detected;
+    return merged;
 }
 
 float f1_test(vector <Rect> &detected, vector <Rect> &ground_truth, float threshold) {
