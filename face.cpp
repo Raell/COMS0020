@@ -13,7 +13,9 @@
 #include "opencv2/imgproc/imgproc.hpp"
 #include <iostream>
 #include <stdio.h>
+#include <tr1/unordered_map>
 
+using namespace std::tr1;
 using namespace std;
 using namespace cv;
 
@@ -69,7 +71,7 @@ void detectAndDisplay( Mat frame )
 
 	// Partitions bounding boxes
 	vector<Rect> partitioned_faces = merge_faces(faces);
-	
+
 	// Print out number of paritioned faces
 	cout << partitioned_faces.size() << endl;
 
@@ -85,12 +87,12 @@ void detectAndDisplay( Mat frame )
 vector<Rect> merge_faces(const vector<Rect> faces) 
 {
 	// Partitions bounding boxes if IOU is above threshold
-	map<int, set<int>*> partitions;
+	unordered_map<int, set<int>*> partitions;
 
 	// Iterate over each pair of faces
 	for( int i = 0; i < faces.size(); i++ )
 	{
-		map<int,set<int>*>::iterator i_it = partitions.find(i);
+		unordered_map<int,set<int>*>::iterator i_it = partitions.find(i);
 		if (i_it == partitions.end()) 
 		{
 			// Insert default partitions
@@ -109,7 +111,7 @@ vector<Rect> merge_faces(const vector<Rect> faces)
 
 			if ((intersectionArea / unionArea) > MERGE_THRESHOLD) 
 			{	
-				map<int,set<int>*>::iterator j_it = partitions.find(j);
+				unordered_map<int,set<int>*>::iterator j_it = partitions.find(j);
 				if (i_it != partitions.end() && j_it != partitions.end())
 				{
 					if (i_it->second != j_it->second) 
