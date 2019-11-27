@@ -187,13 +187,13 @@ bool circlesAreContained(vector <Circle> &circles, int threshold = 20) {
 bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, Rect &box) {
     /*
      * A greedy heuristic algorithm that exploits results from the viola jones detection, the box merging algorithm, and general dartboard characteristics
-     * Given that the TPR of VJ is relatively, we can make optimistic greedy decision choices.
+     * Given that the TPR of VJ is relatively high, we can make optimistic greedy decision choices.
      *
      * (1) we check if the region  has any circles at all. If it doesn't, then we ensure that it has at least 6 points passing through the rectangle centre
      *
-     * (2) If it does have a high number of circles, which span a large of the rectangle there is a very good change we have detected a dartboard.
+     * (2) If it does have a high number of circles, check if the largest circle spans around half the area of the rectangle.
      *
-     * (3) If the # of circles is not high enough, we check if all of those circles are contained in each other. If they are not (with some allowance for errors), we have not detected a dartboard
+     * (3) If the # of circles is not high enough, we check if all of those circles are contained in each other. If they are not, we have not detected a dartboard
      *
      * (4) As a last resort, check if there are a large number of lines passing through the centre of the contracted rectangle.
      *
