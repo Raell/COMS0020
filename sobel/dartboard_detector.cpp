@@ -142,7 +142,7 @@ double calculate_houghLines_voting_threshold(Mat &hough_space);
 double calculate_houghCircles_voting_threshold(std::vector < std::vector < std::vector < int >> > &hough_space);
 
 double calculate_houghCircles_voting_threshold(std::vector < std::vector < std::vector < int >> > &hough_space) {
-    return 25;
+    return 14;
 }
 
 void pipeline(Mat &frame);
@@ -186,7 +186,7 @@ bool circlesAreContained(vector <Circle> &circles, int threshold = 20) {
 
 bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, Rect &box) {
     /*
-     * A greedy heuristic algorithm that exploits results from the viola jones detection, the box merging algorithm, and general dartboard characteristics
+     * A greedy heuristic algorithm that exploits results from the viola jones detection, the box merging algorithm, and general dartboard characteristics.
      * Given that the TPR of VJ is relatively high, we can make optimistic greedy decision choices.
      *
      * (1) we check if the region  has any circles at all. If it doesn't, then we ensure that it has at least 6 points passing through the rectangle centre
@@ -269,7 +269,7 @@ void drawCircles(Mat &image, vector <Circle> &circles) {
     //  imwrite("result/foundCircles.jpg", image);
 }
 
-vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir, int voting_threshold) {
+vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir) {
 
     int radius = image.rows / 2;
 
@@ -314,6 +314,7 @@ vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir, i
         }
     }
     vector <Circle> circles;
+    auto voting_threshold = calculate_houghCircles_voting_threshold(houghSpace);
     for (int y = 0; y < image.rows; y++) {
         for (int x = 0; x < image.cols; x++) {
             for (int r = 0; r < radius; r++) {
@@ -368,7 +369,7 @@ void pipeline(Mat &frame) {
         thresholdedMag.create(gray_viola_jones.size(), CV_64F);
         getThresholdedMag(gradientMagnitude, thresholdedMag, GRADIENT_THRESHOLD);
 
-        auto circles = houghCircles(gray_viola_jones, thresholdedMag, gradientDirection, 14);
+        auto circles = houghCircles(gray_viola_jones, thresholdedMag, gradientDirection);
         //      drawCircles(rgb_viola_jones, circles);
 
         auto houghSpace = get_houghSpaceLines(thresholdedMag, gradientDirection, gray_viola_jones.cols,
