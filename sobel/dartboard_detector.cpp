@@ -222,7 +222,6 @@ bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, Rect &box
     auto box_area = box.area();
 
     if (circles.size() >= 50 && max_circle_area > box.area() / 2.5) {
-        cout << " geeperes";
         return true;
     }
 
@@ -247,8 +246,6 @@ bool linesPassThroughBoxCentre(vector <Line> &lines, Rect &box, int threshold) {
     for (const auto &line: lines) {
         double midpointX = (line.p1.x + line.p2.x) / 2;
         double midpointY = (line.p1.y + line.p2.y) / 2;
-
-        cout << midpointX << " " << midpointY << endl;
 
         bool xInBox = midpointX >= reduced_box.x && midpointX <= boxWidthBound;
         bool yInBox = midpointY >= reduced_box.y && midpointY <= boxHeightBound;
@@ -394,11 +391,6 @@ void pipeline(Mat &frame) {
             drawCircles(rgb_viola_jones, circles);
 
 
-
-
-
-            //TODO: draw a rectangle around the region if dartboard confirmed
-
         } else {
             cout << "result: NOT detected" << endl;
         }
@@ -407,8 +399,6 @@ void pipeline(Mat &frame) {
     }
 
     cout << "Total dartboards detected: " << counter;
-
-    //TODO: Load ground truths and compute F1-score.
 
     imwrite("result/best_viola_jones.jpg", best_viola_jones);
 
