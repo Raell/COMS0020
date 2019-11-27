@@ -11,6 +11,9 @@
 #define GRADIENT_THRESHOLD 200
 #define ANGLE_RANGE 20
 
+#define MERGE_THRESHOLD 0.15
+#define IOU_THRESHOLD 0.3
+
 using namespace cv;
 using namespace std;
 
@@ -45,6 +48,18 @@ public:
         return PI * pow(r, 2);
     }
 };
+
+bool compareByArea(const Circle &c1, const Circle &c2) {
+    return c1.r < c2.r;
+}
+
+bool compareByX(const Circle &c1, const Circle &c2) {
+    return c1.x < c2.x;
+}
+
+bool compareByY(const Circle &c1, const Circle &c2) {
+    return c1.y < c2.y;
+}
 
 std::ostream &operator<<(std::ostream &strm, const Circle &circle) {
     return strm << "Circle: x= " << circle.x << " y=" << circle.y << " r=" << circle.r;
@@ -90,6 +105,9 @@ CascadeClassifier cascade;
 vector <Rect> getGroundTruthsFromCSV(string csv);
 string get_csv_file(const char *imgName);
 vector <Rect> detectAndDisplay(Mat frame);
+
+vector <Rect> merge_boxes(const vector <Rect> boxes);
+
 float f1_test(vector <Rect> &detected, vector <Rect> &actual, float threshold);
 
 Mat convolution(Mat &input, int direction, Mat kernel, cv::Size image_size);
@@ -120,22 +138,58 @@ double calculate_houghLines_voting_threshold(Mat &hough_space) {
     return houghSpaceThreshold;
 }
 
-bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines) {
+bool concentricCircles(vector <Circle> &circles, int threshold) {
+    std::sort(circles.begin(), circles.end(), compareByX);
+    auto max_x = circles.back().x;
+    auto min_x = circles.front().x;
+    if (max_x - min_x > threshold) {
+        return false;
+    }
+    std::sort(circles.begin(), circles.end(), compareByY);
+    auto max_y = circles.back().y;
+    auto min_y = circles.front().y;
+    if (max_y - min_y > threshold) {
+        return false;
+    }
+
+    return true;
+
+}
+
+bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, Rect &box) {
     /*
-     * If no circles, no dartboard
-     * If multiple non-centric circles, no dartboard
-     * Merge concentric circles
-     * If multiple concentric circles, return true
-     * If exactly one circle
-     *      if >3 lines pass through centre, return true. Otherwise false
-     *
+     * A greedy heuristic algorithm that exploits results from the viola jones detection and dartboard characteristics
      *
      */
     if (circles.size() == 0) {
         return false;
     }
+    auto biggest_circle = std::max_element(circles.begin(), circles.end(), compareByArea);
+    auto max_circle_area = biggest_circle->area();
+    auto box_area = box.area();
 
-    auto
+    cout << "max circle area" << max_circle_area << endl;
+    cout << " box area" << box_area << endl;
+
+    if (circles.size() >= 70 && max_circle_area >= box_area / 2.5) {
+        return true;
+    }
+
+    //check for non-conentric circles
+    //if there are non-centric circles, return false
+
+    if (!concentricCircles(circles, 10)) {
+        return false;
+    }
+
+
+    //check if area of biggest circle is > 1/2 of area of bounding box7
+    if (max_circle_area > box.area() / 2.5) {
+        return true;
+    }
+
+    //if not, check if more 5 lines pass close the centre of the circle
+    return false;
 }
 
 void drawCircles(Mat &image, vector <Circle> &circles) {
@@ -216,6 +270,8 @@ void pipeline(Mat &frame) {
             0, 0, 0,
             1, 2, 1);
 
+    int counter = 0;
+
 
     //get viola-jones detections and draw then in GREEN.
     auto violaJonesDetections = detectAndDisplay(frame);
@@ -253,12 +309,14 @@ void pipeline(Mat &frame) {
         cout << "lines detected " << lines.size() << std::endl;
         drawLines(rgb_viola_jones, thresholdedMag, lines);
 
-
-        //TODO: write a heuristic algorithm (based on the positions of the circles and lines)
-        // to determine the existence of a dartboard  within the current bounding box
+        if (dartboardDetected(circles, lines, rect)) {
+            counter += 1;
+        }
 
         cout << "######################" << std::endl;
     }
+
+    cout << "Total dartboards detected: " << counter;
 
     //TODO: Load ground truths and keep track of TP, FP etc to compute F1-score.
 
@@ -565,7 +623,7 @@ vector <Rect> detectAndDisplay(Mat frame) {
     cout << "size before merging: " << detected.size() << std::endl;
 
     // 2.5 Merge overlapping rectangles
-    auto merged = detected;
+    auto merged = merge_boxes(detected);
 
     cout << "Size after merging: " << merged.size();
 
@@ -573,16 +631,104 @@ vector <Rect> detectAndDisplay(Mat frame) {
 
 
 
-    // 3. Print number of Faces found
+    // 3. Print number of boxes found
     cout << "dartboards detected: " << merged.size() << std::endl;
 
-    // 4. Draw box around faces found
+    // 4. Draw box around boxes found
     for (int i = 0; i < merged.size(); i++) {
         rectangle(frame, Point(merged[i].x, merged[i].y),
                   Point(merged[i].x + merged[i].width, merged[i].y + merged[i].height),
                   Scalar(0, 255, 0), 2);
     }
     return merged;
+}
+
+vector <Rect> merge_boxes(const vector <Rect> boxes) {
+    // Partitions bounding boxes if IOU is above threshold
+    unordered_map < int, set < int > * > partitions;
+
+    // Iterate over each pair of boxes
+    for (int i = 0; i < boxes.size(); i++) {
+        unordered_map < int, set < int > * > ::iterator
+        i_it = partitions.find(i);
+        if (i_it == partitions.end()) {
+            // Insert default partitions
+            set<int> *initial_set = new set<int>();
+            initial_set->insert(i);
+            i_it = partitions.insert(pair < int, set < int > * > (i, initial_set)).first;
+        }
+
+        for (int j = i + 1; j < boxes.size(); j++) {
+            // If IOU is above threshold, we partition them
+            Rect intersection = boxes[i] & boxes[j];
+            Rect box_union = boxes[i] | boxes[j];
+            float intersectionArea = intersection.area();
+            float unionArea = box_union.area();
+
+            if ((intersectionArea / unionArea) > MERGE_THRESHOLD) {
+                unordered_map < int, set < int > * > ::iterator
+                j_it = partitions.find(j);
+                if (i_it != partitions.end() && j_it != partitions.end()) {
+                    if (i_it->second != j_it->second) {
+                        // Merge sets if pointers are of different partitions
+                        i_it->second->insert(j_it->second->begin(), j_it->second->end());
+
+                        set<int> temp = *j_it->second;
+
+                        for (auto index : temp) {
+                            // Change all pointers from partition of j to the new merged set
+                            partitions[index] = i_it->second;
+                        }
+
+                    }
+
+                } else if (i_it != partitions.end()) {
+                    // Add j to partition i if j is not partitioned
+                    i_it->second->insert(j);
+                    partitions[j] = i_it->second;
+
+                } else if (j_it != partitions.end()) {
+                    // Add i to partition j if i is not partitioned
+                    j_it->second->insert(i);
+                    partitions[i] = j_it->second;
+                }
+
+            }
+
+        }
+
+    }
+
+    vector <Rect> partitioned_boxes;
+
+    for (auto elem : partitions) {
+        // Check if partition has been processed
+        int n = elem.second->size();
+        if (n > 0) {
+
+            // Find average position, width and height of Rect in partition	
+            Point pos = Point(0, 0);
+            int width = 0, height = 0;
+
+            for (auto j : *elem.second) {
+                Rect face = boxes[j];
+                pos += Point(face.x, face.y);
+                width += face.width;
+                height += face.height;
+            }
+
+            pos = Point(cvRound(pos.x / n), cvRound(pos.y / n));
+            width = cvRound(width / n);
+            height = cvRound(height / n);
+            Rect avg_rect = Rect(pos, pos + Point(width, height));
+
+            // Clears partition and push average rectangle
+            partitioned_boxes.push_back(avg_rect);
+            elem.second->clear();
+        }
+    }
+
+    return partitioned_boxes;
 }
 
 float f1_test(vector <Rect> &detected, vector <Rect> &ground_truth, float threshold) {
