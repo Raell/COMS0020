@@ -9,7 +9,7 @@
 #define PI 3.14159265
 
 #define GRADIENT_THRESHOLD 200
-#define ANGLE_RANGE 20
+#define ANGLE_RANGE 30
 
 #define MERGE_THRESHOLD 0.15
 #define IOU_THRESHOLD 0.3
@@ -21,12 +21,16 @@ class Line {
 public:
     int rho;
     int theta;
+    Point p1;
+    Point p2;
 
     Line() : rho(0), theta(0) {}
 
-    Line(int rho, int theta) {
+    Line(int rho, int theta, Point p1, Point p2) {
         this->rho = rho;
         this->theta = theta;
+        this->p1 = p1;
+        this->p2 = p2;
     }
 };
 
@@ -76,7 +80,7 @@ vector <Circle> filter_circles(vector <Circle> &circles) {
 
     unordered_set <string> circles_seen;
     vector <Circle> distinct;
-    for (auto &c: circles) {
+    for (const auto &c: circles) {
         auto centre = stringify(make_pair(c.x, c.y));
         if (circles_seen.find(centre) == circles_seen.end()) {
             distinct.push_back(c);
@@ -89,7 +93,7 @@ vector <Circle> filter_circles(vector <Circle> &circles) {
 vector <Line> filter_lines_by_theta(vector <Line> &lines) {
     unordered_set<int> lines_seen;
     vector <Line> distinct;
-    for (auto &line: lines) {
+    for (const auto &line: lines) {
         auto theta = line.theta;
         if (lines_seen.find(theta) == lines_seen.end()) {
             distinct.push_back(line);
@@ -120,7 +124,7 @@ Mat getDirection(Mat &dfdx, Mat &dfdy, cv::Size image_size);
 void getThresholdedMag(Mat &input, Mat &output, double gradient_threshold);
 Mat get_houghSpaceLines(Mat &thresholdMag, Mat &gradientDirection, int width, int height);
 
-vector <Line> collect_lines_from_houghSpace(Mat &houghSpace, double threshold);
+vector <Line> collect_lines_from_houghSpace(Mat &houghSpace, double threshold, Rect &box);
 
 double calculate_houghLines_voting_threshold(Mat &hough_space);
 double calculate_houghCircles_voting_threshold(std::vector < std::vector < std::vector < int >> > &hough_space);
@@ -138,7 +142,7 @@ double calculate_houghLines_voting_threshold(Mat &hough_space) {
     return houghSpaceThreshold;
 }
 
-bool concentricCircles(vector <Circle> &circles, int threshold) {
+bool concentricCircles(vector <Circle> &circles, const int threshold) {
     std::sort(circles.begin(), circles.end(), compareByX);
     auto max_x = circles.back().x;
     auto min_x = circles.front().x;
@@ -153,12 +157,17 @@ bool concentricCircles(vector <Circle> &circles, int threshold) {
     }
 
     return true;
+}
+
+bool circlesAreContained(vector <Circle> &circle) {
+    //auto biggest_circle = std::max_element(circles);
 
 }
 
-bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, Rect &box) {
+bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, const Rect &box) {
     /*
-     * A greedy heuristic algorithm that exploits results from the viola jones detection and dartboard characteristics
+     * A greedy heuristic algorithm that exploits results from the viola jones detection and general dartboard characteristics
+     *
      *
      */
     if (circles.size() == 0) {
@@ -167,23 +176,26 @@ bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, Rect &box
     auto biggest_circle = std::max_element(circles.begin(), circles.end(), compareByArea);
     auto max_circle_area = biggest_circle->area();
     auto box_area = box.area();
+    circles = filter_circles(circles);
+    for (const auto &c: circles) {
+        cout << c << endl;
+    }
 
     cout << "max circle area" << max_circle_area << endl;
-    cout << " box area" << box_area << endl;
+    cout << " box area: " << box_area << endl;
+    cout << "circles found: " << circles.size() << endl;
 
-    if (circles.size() >= 70 && max_circle_area >= box_area / 2.5) {
+    if (circles.size() >= 50 && max_circle_area >= box_area / 2.5) {
         return true;
     }
 
     //check for non-conentric circles
     //if there are non-centric circles, return false
 
-    if (!concentricCircles(circles, 10)) {
+    if (!concentricCircles(circles, 15)) {
         return false;
     }
 
-
-    //check if area of biggest circle is > 1/2 of area of bounding box7
     if (max_circle_area > box.area() / 2.5) {
         return true;
     }
@@ -193,7 +205,7 @@ bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, Rect &box
 }
 
 void drawCircles(Mat &image, vector <Circle> &circles) {
-    for (auto &c: circles) {
+    for (const auto &c: circles) {
         Point center(c.x, c.y);
         cv::circle(image, center, c.r, Scalar(0, 0, 255), 2, 8, 0);
     }
@@ -295,17 +307,13 @@ void pipeline(Mat &frame) {
         thresholdedMag.create(gray_viola_jones.size(), CV_64F);
         getThresholdedMag(gradientMagnitude, thresholdedMag, GRADIENT_THRESHOLD);
 
-        auto circles = houghCircles(gray_viola_jones, thresholdedMag, gradientDirection, 15);
+        auto circles = houghCircles(gray_viola_jones, thresholdedMag, gradientDirection, 14);
         drawCircles(rgb_viola_jones, circles);
-        cout << "circles detected " << circles.size() << std::endl;
-        for (auto &c: circles) {
-            cout << c << endl;
-        }
 
         auto houghSpace = get_houghSpaceLines(thresholdedMag, gradientDirection, gray_viola_jones.cols,
                                               gray_viola_jones.rows);
         auto houghLinesThreshold = calculate_houghLines_voting_threshold(houghSpace);
-        auto lines = collect_lines_from_houghSpace(houghSpace, houghLinesThreshold);
+        auto lines = collect_lines_from_houghSpace(houghSpace, houghLinesThreshold, rect);
         cout << "lines detected " << lines.size() << std::endl;
         drawLines(rgb_viola_jones, thresholdedMag, lines);
 
@@ -378,22 +386,37 @@ void drawLines(Mat &image, Mat thresholdedMag, std::vector <Line> &detected_line
 }
 
 vector <Line> collect_lines_from_houghSpace(Mat &houghSpace,
-                                            double threshold) {
+                                            double threshold, Rect &box) {
     /*
      * Populates the line vector & thresholds the houghspace.
      */
     std::vector <Line> lines;
 
-    for (int y = 0; y < houghSpace.rows; y++) {
-        for (int x = 0; x < houghSpace.cols; x++) {
-            double val = houghSpace.at<double>(y, x);
+    for (int rho = 0; rho < houghSpace.rows; rho++) {
+        for (int theta = 0; theta < houghSpace.cols; theta++) {
+            double val = houghSpace.at<double>(rho, theta);
 
             if (val > threshold) {
-                Line l = Line(y, x);
+                Point point1, point2;
+
+                double radians = theta * (PI / 180);
+                double m = cos(radians) / sin(radians);
+                double c = (rho) / sin(radians);
+
+                point1.x = cvRound(box.x);
+                point1.y = cvRound(box.y) + cvRound(c);
+                // When x = end of image
+                point2.x = cvRound(box.x + box.width);
+                point2.y = cvRound(box.y) + cvRound(c - (box.width * m));
+
+                clipLine(box, point1, point2);
+                auto l = Line(rho, theta, point1, point2);
+
                 lines.push_back(l);
-                houghSpace.at<double>(y, x) = 255;
+
+                houghSpace.at<double>(rho, theta) = 255;
             } else {
-                houghSpace.at<double>(y, x) = 0.0;
+                houghSpace.at<double>(rho, theta) = 0.0;
             }
         }
     }
@@ -571,35 +594,6 @@ void getThresholdedMag(Mat &input, Mat &output, double gradient_threshold) {
     imwrite("result/thresholded.jpg", output);
 }
 
-vector <Rect> mergeDetections(vector <Rect> &detected) {
-    std::vector <Rect> singles;
-    std::vector <Rect> overlaps;
-    for (auto rect_1: detected) {
-        bool isSingle = true;
-        for (auto rect_2: detected) {
-            if (&rect_1 == &rect_2) {
-                continue;
-            }
-            bool intersects = ((rect_1 & rect_2).area() > 0);
-            if (intersects) {
-                isSingle = false;
-                break;
-            }
-        }
-        if (isSingle) {
-            singles.push_back(std::move(rect_1));
-        } else {
-            overlaps.push_back(std::move(rect_1));
-        }
-    }
-    groupRectangles(overlaps, 1, 0.8);
-
-    //we don't want to exclude single boxes
-    for (auto r: singles) {
-        overlaps.push_back(std::move(r));
-    }
-    return overlaps;
-}
 
 vector <Rect> detectAndDisplay(Mat frame) {
     Mat frame_gray;
