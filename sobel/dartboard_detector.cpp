@@ -173,12 +173,9 @@ bool concentricCircles(vector <Circle> &circles, const int threshold) {
 
 bool circlesAreContained(vector <Circle> &circles, int threshold = 20) {
     auto biggest_circle = std::max_element(circles.begin(), circles.end(), compareByArea);
-    cout << "biggest " << biggest_circle->r;
     for (const auto &c: circles) {
-
         auto distance_bw_centres = (int) sqrt(pow(c.x - biggest_circle->x, 2) + pow(c.y - biggest_circle->y, 2));
         if (biggest_circle->r + threshold < distance_bw_centres + c.r) {
-            cout << "failed at " << c.r;
             return false;
         }
 
@@ -207,6 +204,8 @@ bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, Rect &box
     lines = filter_lines_by_theta(lines, 30);
 
     cout << "circles detected: " << circles.size() << endl;
+    cout << "lines detected: " << lines.size() << endl;
+
     for (auto &l: lines) {
         cout << l << endl;
     }
@@ -222,22 +221,16 @@ bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, Rect &box
     auto max_circle_area = biggest_circle->area();
     auto box_area = box.area();
 
-    if (circles.size() >= 50 && max_circle_area >= box_area / 2.5) {
+    if (circles.size() >= 50 && max_circle_area > box.area() / 2.5) {
+        cout << " geeperes";
         return true;
     }
 
-    if (max_circle_area > box.area() / 2.5) {
+    if (max_circle_area > box.area() / 2.5 && circlesAreContained(circles)) {
         return true;
-    }
-
-    cout << "lines got " << lines.size();
-
-    if (!circlesAreContained(circles) && max_circle_area > box.area() / 2.5) {
-        return false;
     }
 
     if (linesPassThroughBoxCentre(lines, box, lines.size() - 2) && lines.size() >= 5) {
-        cout << "line pass ";
         return true;
     }
 
@@ -265,10 +258,6 @@ bool linesPassThroughBoxCentre(vector <Line> &lines, Rect &box, int threshold) {
         }
     }
 
-    cout << "lines pass through centre: " << count << endl;
-    cout << reduced_box.x << " " << boxWidthBound << endl;
-    cout << reduced_box.y << " " << boxHeightBound << endl;
-
     return count >= threshold;
 
 
@@ -280,7 +269,7 @@ void drawCircles(Mat &image, vector <Circle> &circles) {
         cv::circle(image, center, c.r, Scalar(0, 0, 255), 2, 8, 0);
     }
 
-    imwrite("result/foundCircles.jpg", image);
+    //  imwrite("result/foundCircles.jpg", image);
 }
 
 vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir, int voting_threshold) {
@@ -356,6 +345,8 @@ void pipeline(Mat &frame) {
 
     int counter = 0;
 
+    auto best_viola_jones = frame.clone();
+
 
     //get viola-jones detections and draw then in GREEN.
     auto violaJonesDetections = detectAndDisplay(frame);
@@ -366,7 +357,7 @@ void pipeline(Mat &frame) {
     for (auto &rect: violaJonesDetections) {
 
         auto rgb_viola_jones = frame(rect);
-        auto viola_jones_and_hough = frame(rect);
+        auto clone = best_viola_jones(rect);
         Mat gray_viola_jones;
         cvtColor(rgb_viola_jones, gray_viola_jones, CV_BGR2GRAY);
 
@@ -381,7 +372,7 @@ void pipeline(Mat &frame) {
         getThresholdedMag(gradientMagnitude, thresholdedMag, GRADIENT_THRESHOLD);
 
         auto circles = houghCircles(gray_viola_jones, thresholdedMag, gradientDirection, 14);
-        drawCircles(rgb_viola_jones, circles);
+        //      drawCircles(rgb_viola_jones, circles);
 
         auto houghSpace = get_houghSpaceLines(thresholdedMag, gradientDirection, gray_viola_jones.cols,
                                               gray_viola_jones.rows);
@@ -389,14 +380,27 @@ void pipeline(Mat &frame) {
         auto houghLinesThreshold = calculate_houghLines_voting_threshold(houghSpace);
         auto lines = collect_lines_from_houghSpace(houghSpace, houghLinesThreshold, rect);
 
-        drawLines(rgb_viola_jones, thresholdedMag, lines);
+//        drawLines(rgb_viola_jones, thresholdedMag, lines);
 
         if (dartboardDetected(circles, lines, rect)) {
             counter += 1;
-            cout << "detected" << endl;
+            cout << "result: detected" << endl;
+
+            rectangle(clone, Point(rect.x, rect.y),
+                      Point(rect.x + rect.width, rect.y + rect.height),
+                      Scalar(255, 0, 0), 2);
+
+            drawLines(rgb_viola_jones, thresholdedMag, lines);
+            drawCircles(rgb_viola_jones, circles);
+
+
+
+
 
             //TODO: draw a rectangle around the region if dartboard confirmed
 
+        } else {
+            cout << "result: NOT detected" << endl;
         }
 
         cout << "######################" << std::endl;
@@ -405,6 +409,8 @@ void pipeline(Mat &frame) {
     cout << "Total dartboards detected: " << counter;
 
     //TODO: Load ground truths and compute F1-score.
+
+    imwrite("result/best_viola_jones.jpg", best_viola_jones);
 
     imwrite("result/detections.jpg", frame);
 }
@@ -713,10 +719,7 @@ vector <Rect> detectAndDisplay(Mat frame) {
     // 2.5 Merge overlapping rectangles
     auto merged = merge_boxes(detected);
 
-    cout << "Size after merging: " << merged.size();
-
-    // cout << "size after  merging: " << detected.size() << std::endl;
-
+    cout << "Size after merging: " << merged.size() << std::endl;
 
 
     // 3. Print number of boxes found
