@@ -65,6 +65,10 @@ bool compareByY(const Circle &c1, const Circle &c2) {
     return c1.y < c2.y;
 }
 
+bool compareByTheta(const Line &l1, const Line &l2) {
+    return l1.theta < l2.theta;
+}
+
 std::ostream &operator<<(std::ostream &strm, const Circle &circle) {
     return strm << "Circle: x= " << circle.x << " y=" << circle.y << " r=" << circle.r;
 }
@@ -90,16 +94,21 @@ vector <Circle> filter_circles(vector <Circle> &circles) {
     return distinct;
 }
 
-vector <Line> filter_lines_by_theta(vector <Line> &lines) {
-    unordered_set<int> lines_seen;
+vector <Line> filter_lines_by_theta(vector <Line> &lines, int threshold) {
+    std::sort(lines.begin(), lines.end(), compareByTheta);
+    auto window_begin = 0;
+    auto window_end = 0;
     vector <Line> distinct;
-    for (const auto &line: lines) {
-        auto theta = line.theta;
-        if (lines_seen.find(theta) == lines_seen.end()) {
-            distinct.push_back(line);
-            lines_seen.insert(theta);
+
+    //maintains a sliding window to capture the range of lines satisfying the threshold
+    while (window_end < lines.size()) {
+        if (lines[window_begin].theta + threshold < lines[window_end].theta) {
+            distinct.push_back(lines[window_begin]);
+            window_begin = window_end;
         }
+        window_end += 1;
     }
+    distinct.push_back(lines[window_begin]);
     return distinct;
 }
 
@@ -119,12 +128,15 @@ Mat convolution(Mat &input, int direction, Mat kernel, cv::Size image_size);
 void drawLines(Mat &image, Mat thresholdedMag, std::vector <Line> &detected_lines);
 void drawCircles(Mat &image, vector <Circle> &circles);
 
+Rect contractBox(Rect &box);
+
 Mat getMagnitude(Mat &dfdx, Mat &dfdy, cv::Size image_size);
 Mat getDirection(Mat &dfdx, Mat &dfdy, cv::Size image_size);
 void getThresholdedMag(Mat &input, Mat &output, double gradient_threshold);
 Mat get_houghSpaceLines(Mat &thresholdMag, Mat &gradientDirection, int width, int height);
 
 vector <Line> collect_lines_from_houghSpace(Mat &houghSpace, double threshold, Rect &box);
+bool linesPassThroughBoxCentre(vector <Line> &lines, Rect &box, int threshold);
 
 double calculate_houghLines_voting_threshold(Mat &hough_space);
 double calculate_houghCircles_voting_threshold(std::vector < std::vector < std::vector < int >> > &hough_space);
@@ -159,49 +171,107 @@ bool concentricCircles(vector <Circle> &circles, const int threshold) {
     return true;
 }
 
-bool circlesAreContained(vector <Circle> &circle) {
-    //auto biggest_circle = std::max_element(circles);
+bool circlesAreContained(vector <Circle> &circles, int threshold = 20) {
+    auto biggest_circle = std::max_element(circles.begin(), circles.end(), compareByArea);
+    cout << "biggest " << biggest_circle->r;
+    for (const auto &c: circles) {
+
+        auto distance_bw_centres = (int) sqrt(pow(c.x - biggest_circle->x, 2) + pow(c.y - biggest_circle->y, 2));
+        if (biggest_circle->r + threshold < distance_bw_centres + c.r) {
+            cout << "failed at " << c.r;
+            return false;
+        }
+
+    }
+    return true;
 
 }
 
-bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, const Rect &box) {
+bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, Rect &box) {
     /*
-     * A greedy heuristic algorithm that exploits results from the viola jones detection and general dartboard characteristics
+     * A greedy heuristic algorithm that exploits results from the viola jones detection, the box merging algorithm, and general dartboard characteristics
+     * Given that the TPR of VJ is relatively, we can make optimistic greedy decision choices.
      *
+     * (1) we check if the region  has any circles at all. If it doesn't, then we ensure that it has at least 6 points passing through the rectangle centre
+     *
+     * (2) If it does have a high number of circles, which span a large of the rectangle there is a very good change we have detected a dartboard.
+     *
+     * (3) If the # of circles is not high enough, we check if all of those circles are contained in each other. If they are not (with some allowance for errors), we have not detected a dartboard
+     *
+     * (4) As a last resort, check if there are a large number of lines passing through the centre of the contracted rectangle.
      *
      */
+
+
+    circles = filter_circles(circles);
+    lines = filter_lines_by_theta(lines, 30);
+
+    cout << "circles detected: " << circles.size() << endl;
+    for (auto &l: lines) {
+        cout << l << endl;
+    }
+
     if (circles.size() == 0) {
+        if (linesPassThroughBoxCentre(lines, box, lines.size() - 1) && lines.size() >= 6) {
+            return true;
+        }
         return false;
     }
+
     auto biggest_circle = std::max_element(circles.begin(), circles.end(), compareByArea);
     auto max_circle_area = biggest_circle->area();
     auto box_area = box.area();
-    circles = filter_circles(circles);
-    for (const auto &c: circles) {
-        cout << c << endl;
-    }
-
-    cout << "max circle area" << max_circle_area << endl;
-    cout << " box area: " << box_area << endl;
-    cout << "circles found: " << circles.size() << endl;
 
     if (circles.size() >= 50 && max_circle_area >= box_area / 2.5) {
         return true;
-    }
-
-    //check for non-conentric circles
-    //if there are non-centric circles, return false
-
-    if (!concentricCircles(circles, 15)) {
-        return false;
     }
 
     if (max_circle_area > box.area() / 2.5) {
         return true;
     }
 
-    //if not, check if more 5 lines pass close the centre of the circle
+    cout << "lines got " << lines.size();
+
+    if (!circlesAreContained(circles) && max_circle_area > box.area() / 2.5) {
+        return false;
+    }
+
+    if (linesPassThroughBoxCentre(lines, box, lines.size() - 2) && lines.size() >= 5) {
+        cout << "line pass ";
+        return true;
+    }
+
     return false;
+}
+
+bool linesPassThroughBoxCentre(vector <Line> &lines, Rect &box, int threshold) {
+    auto reduced_box = contractBox(box);
+    auto count = 0;
+
+    int boxWidthBound = reduced_box.x + reduced_box.width;
+    int boxHeightBound = reduced_box.y + reduced_box.height;
+
+    for (const auto &line: lines) {
+        double midpointX = (line.p1.x + line.p2.x) / 2;
+        double midpointY = (line.p1.y + line.p2.y) / 2;
+
+        cout << midpointX << " " << midpointY << endl;
+
+        bool xInBox = midpointX >= reduced_box.x && midpointX <= boxWidthBound;
+        bool yInBox = midpointY >= reduced_box.y && midpointY <= boxHeightBound;
+
+        if (xInBox && yInBox) {
+            count++;
+        }
+    }
+
+    cout << "lines pass through centre: " << count << endl;
+    cout << reduced_box.x << " " << boxWidthBound << endl;
+    cout << reduced_box.y << " " << boxHeightBound << endl;
+
+    return count >= threshold;
+
+
 }
 
 void drawCircles(Mat &image, vector <Circle> &circles) {
@@ -274,6 +344,8 @@ vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir, i
 
 void pipeline(Mat &frame) {
 
+    vector <Rect> best_detections;
+
     Mat dxKernel = (Mat_<double>(3, 3) << -1, 0, 1,
             -2, 0, 2,
             -1, 0, 1);
@@ -294,6 +366,7 @@ void pipeline(Mat &frame) {
     for (auto &rect: violaJonesDetections) {
 
         auto rgb_viola_jones = frame(rect);
+        auto viola_jones_and_hough = frame(rect);
         Mat gray_viola_jones;
         cvtColor(rgb_viola_jones, gray_viola_jones, CV_BGR2GRAY);
 
@@ -312,13 +385,18 @@ void pipeline(Mat &frame) {
 
         auto houghSpace = get_houghSpaceLines(thresholdedMag, gradientDirection, gray_viola_jones.cols,
                                               gray_viola_jones.rows);
+
         auto houghLinesThreshold = calculate_houghLines_voting_threshold(houghSpace);
         auto lines = collect_lines_from_houghSpace(houghSpace, houghLinesThreshold, rect);
-        cout << "lines detected " << lines.size() << std::endl;
+
         drawLines(rgb_viola_jones, thresholdedMag, lines);
 
         if (dartboardDetected(circles, lines, rect)) {
             counter += 1;
+            cout << "detected" << endl;
+
+            //TODO: draw a rectangle around the region if dartboard confirmed
+
         }
 
         cout << "######################" << std::endl;
@@ -326,7 +404,7 @@ void pipeline(Mat &frame) {
 
     cout << "Total dartboards detected: " << counter;
 
-    //TODO: Load ground truths and keep track of TP, FP etc to compute F1-score.
+    //TODO: Load ground truths and compute F1-score.
 
     imwrite("result/detections.jpg", frame);
 }
@@ -401,7 +479,7 @@ vector <Line> collect_lines_from_houghSpace(Mat &houghSpace,
 
                 double radians = theta * (PI / 180);
                 double m = cos(radians) / sin(radians);
-                double c = (rho) / sin(radians);
+                double c = (rho - box.width - box.height) / sin(radians);
 
                 point1.x = cvRound(box.x);
                 point1.y = cvRound(box.y) + cvRound(c);
@@ -594,6 +672,22 @@ void getThresholdedMag(Mat &input, Mat &output, double gradient_threshold) {
     imwrite("result/thresholded.jpg", output);
 }
 
+Rect contractBox(Rect &box) {
+
+    double originalArea = box.width * box.height;
+    double halfArea = originalArea / 4;
+    double newLength = cvRound(sqrt(halfArea));
+
+    double centreX = box.x + (box.width / 2);
+    double centreY = box.y + (box.height / 2);
+
+    double newCentreX = cvRound(centreX - (newLength / 2));
+    double newCentreY = cvRound(centreY - (newLength / 2));
+
+    Rect newBox(newCentreX, newCentreY, newLength, newLength);
+
+    return newBox;
+}
 
 vector <Rect> detectAndDisplay(Mat frame) {
     Mat frame_gray;
@@ -700,7 +794,7 @@ vector <Rect> merge_boxes(const vector <Rect> boxes) {
         int n = elem.second->size();
         if (n > 0) {
 
-            // Find average position, width and height of Rect in partition	
+            // Find average position, width and height of Rect in partition
             Point pos = Point(0, 0);
             int width = 0, height = 0;
 
