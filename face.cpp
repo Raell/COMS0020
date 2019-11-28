@@ -270,10 +270,6 @@ float f1_test(vector <Rect> &detected, vector <Rect> &ground_truth, string outpu
 
         for (int j = 0; j < ground_truth.size(); j++) {
 
-            if (matched.find(j) != matched.end()) {
-                continue;
-            }
-
             Rect intersection = detected[i] & ground_truth[j];
             Rect box_union = detected[i] | ground_truth[j];
             float intersectionArea = intersection.area();
@@ -288,7 +284,6 @@ float f1_test(vector <Rect> &detected, vector <Rect> &ground_truth, string outpu
                         matched.insert(j);
                     }
                     matchFound = true;
-                    break;
                 }
             }
         }
