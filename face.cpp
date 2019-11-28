@@ -284,7 +284,6 @@ float f1_test(vector <Rect> &detected, vector <Rect> &ground_truth, string outpu
                         matched.insert(j);
                     }
                     matchFound = true;
-                    break;
                 }
             }
         }
