@@ -234,7 +234,7 @@ bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, Rect &box
         return true;
     }
 
-    if (linesPassThroughBoxCentre(lines, box, lines.size() - 2) && lines.size() >= 5) {
+    if (linesPassThroughBoxCentre(lines, box, lines.size() - 2) && lines.size() >= MIN_LINES_IN_DARTBOARD) {
         return true;
     }
 
@@ -373,15 +373,12 @@ vector <Rect> pipeline(Mat &frame) {
         getThresholdedMag(gradientMagnitude, thresholdedMag, GRADIENT_THRESHOLD);
 
         auto circles = houghCircles(gray_viola_jones, thresholdedMag, gradientDirection);
-        //      drawCircles(rgb_viola_jones, circles);
 
         auto houghSpace = get_houghSpaceLines(thresholdedMag, gradientDirection, gray_viola_jones.cols,
                                               gray_viola_jones.rows);
 
         auto houghLinesThreshold = calculate_houghLines_voting_threshold(houghSpace);
         auto lines = collect_lines_from_houghSpace(houghSpace, houghLinesThreshold, rect);
-
-//        drawLines(rgb_viola_jones, thresholdedMag, lines);
 
         if (dartboardDetected(circles, lines, rect)) {
             counter += 1;
@@ -711,12 +708,12 @@ vector <Rect> detectAndDisplay(Mat frame) {
     // 2. Perform Viola-Jones Object Detection
     cascade.detectMultiScale(frame_gray, detected, 1.1, 1, 0 | CV_HAAR_SCALE_IMAGE, Size(50, 50), Size(500, 500));
 
-    cout << "size before merging: " << detected.size() << std::endl;
+    cout << "boxes before merging: " << detected.size() << std::endl;
 
     // 2.5 Merge overlapping rectangles
     auto merged = merge_boxes(detected);
 
-    cout << "Size after merging: " << merged.size() << std::endl;
+    cout << "boxes after merging: " << merged.size() << std::endl;
 
 
     // 3. Print number of boxes found
