@@ -822,19 +822,26 @@ vector <Rect> merge_boxes(const vector <Rect> boxes) {
 float f1_test(vector <Rect> &detected, vector <Rect> &ground_truth, float threshold) {
     int truePositives = 0;
     int falsePositives = 0;
+    unordered_set<int> matched;
+
     for (int i = 0; i < detected.size(); i++) {
         bool matchFound = false;
+
         for (int j = 0; j < ground_truth.size(); j++) {
+
             Rect intersection = detected[i] & ground_truth[j];
             Rect box_union = detected[i] | ground_truth[j];
             float intersectionArea = intersection.area();
             float unionArea = box_union.area();
+
             if (intersectionArea > 0) {
-                float matchPercentage = (intersectionArea / unionArea) * 100;
+                float matchPercentage = (intersectionArea / unionArea);
                 if (matchPercentage > threshold) {
-                    truePositives++;
+                    if (matched.find(j) == matched.end()) {
+                        truePositives++;
+                        matched.insert(j);
+                    }
                     matchFound = true;
-                    cout << intersectionArea << endl;
                     break;
                 }
             }
@@ -844,13 +851,14 @@ float f1_test(vector <Rect> &detected, vector <Rect> &ground_truth, float thresh
         }
     }
     std::cout << "true positives: " << truePositives << ", false positives: " << falsePositives << "\n";
+    std::cout << "ground truths: " << ground_truth.size() << endl;
 
     // Precision = TP / (TP + FP)
     // Recall = TPR (True Positive Rate)
     // F1 = 2((PRE * REC)/(PRE + REC))
     int falseNegatives = ground_truth.size() - truePositives;
-    float precision = (float) truePositives / ((float) truePositives + (float) falsePositives);
-    float recall = (float) truePositives / (float) ground_truth.size();
+    float precision = (float) truePositives / (truePositives + falsePositives);
+    float recall = (float) truePositives / ground_truth.size();
     float f1;
     if (precision > 0 && recall > 0) {
         f1 = 2 * (precision * recall) / (precision + recall);
