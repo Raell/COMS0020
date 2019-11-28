@@ -196,11 +196,13 @@ bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, Rect &box
      *
      * (1) we check if the region  has any circles at all. If it doesn't, then we ensure that it has at least 6 points passing through the rectangle centre
      *
-     * (2) If it does have a high number of circles, check if the largest circle spans around half the area of the rectangle.
+     * (2) If it does have a high number of circles, check if the largest circle spans around half the area of the bounding box. If true, dartboard detected.
      *
      * (3) If the # of circles is not high enough, we check if all of those circles are contained in each other. If they are not, we have not detected a dartboard
      *
-     * (4) As a last resort, check if there are a large number of lines passing through the centre of the contracted rectangle.
+     * (4) As a last resort, check if there are a large number of lines passing through the centre of the contracted rectangle. If true, then a dartboard is detected.
+     *
+     * (5) If none of the conditions above are met, there is no dartboard
      *
      */
 
