@@ -215,8 +215,6 @@ int main(int argc, const char **argv) {
 
 
 
-
-
     //init kernels
     Mat dxKernel = (Mat_<double>(3, 3) << -1, 0, 1,
             -2, 0, 2,

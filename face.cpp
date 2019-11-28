@@ -278,7 +278,7 @@ float f1_test(vector <Rect> &detected, vector <Rect> &ground_truth, string outpu
             if (intersectionArea > 0) {
                 float matchPercentage = (intersectionArea / unionArea);
                 if (matchPercentage > threshold) {
-                    if (matched.empty() || matched.find(j) == matched.end()) 
+                    if (matched.find(j) == matched.end())
                     {
                         truePositives++;
                         matched.insert(j);

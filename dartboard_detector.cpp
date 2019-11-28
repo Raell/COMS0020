@@ -399,7 +399,7 @@ vector <Rect> pipeline(Mat &frame) {
         cout << "######################" << std::endl;
     }
 
-    cout << "Total dartboards detected: " << counter;
+    cout << "Total dartboards detected: " << counter << endl;
 
     imwrite("result/detections.jpg", frame);
     return best_detections;
@@ -414,11 +414,12 @@ int main(int argc, const char **argv) {
 
     auto best_detections = pipeline(image);
 
-    auto filePrefix = "../CSVS/dartboard/";
-    auto fileExtension = "jpg";
+    auto filePrefix = "CSVs/dartboard/";
+    auto fileExtension = "points.csv";
     auto filename = get_csv_file(filePrefix, fileExtension, imgName);
     auto ground_truths = getGroundTruthsFromCSV(filename);
-    cout << ground_truths.size();
+    float f1 = f1_test(best_detections, ground_truths, IOU_THRESHOLD);
+    cout << "F1 score: " << f1;
     return 0;
 }
 
@@ -868,7 +869,6 @@ vector <Rect> getGroundTruthsFromCSV(string csv) {
     vector <Rect> ground_truths;
     string current_line;
     ifstream inputFile(c);
-    cout << c;
     if (!inputFile.good()) {
         std::cout << "No CSV file found. F1 score cannot be calculated" << '\n';
         exit(EXIT_FAILURE);
