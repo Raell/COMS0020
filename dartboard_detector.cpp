@@ -13,10 +13,10 @@
 
 #define GRADIENT_THRESHOLD 200
 
-#define CANNY_LOW_THRESHOLD 150
+#define CANNY_LOW_THRESHOLD 100
 #define CANNY_HIGH_THRESHOLD CANNY_LOW_THRESHOLD*3
 #define ANGLE_RANGE 30
-#define MIN_LINES_IN_DARTBOARD 6
+#define MIN_LINES_IN_DARTBOARD 5
 
 #define MERGE_THRESHOLD 0.15
 #define IOU_THRESHOLD 0.3
@@ -162,7 +162,7 @@ vector <Rect> pipeline(Mat &frame);
 double calculate_houghLines_voting_threshold(Mat &hough_space) {
     double max, min;
     cv::minMaxLoc(hough_space, &min, &max);
-    double houghSpaceThreshold = min + ((max - min) / 2) + 50;
+    double houghSpaceThreshold = min + ((max - min) / 2) + 10;
     return houghSpaceThreshold;
 }
 
@@ -216,7 +216,7 @@ bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, Rect &box
     // cout << lines.size() << endl;
 
     circles = filter_circles(circles);
-    lines = filter_lines_by_theta(lines, 30);
+    lines = filter_lines_by_theta(lines, 25);
 
     // cout << "circles detected: " << circles.size() << endl;
     // cout << "lines detected: " << lines.size() << endl;
@@ -435,7 +435,7 @@ vector <Rect> pipeline(Mat &frame, bool canny, bool merge) {
             best_detections.push_back(rect);
 
         } else {
-            cout << "result: NOT detected" << endl;
+            // cout << "result: NOT detected" << endl;
             drawLines(rgb_viola_jones, thresholdedMag, lines);
         }
         // cout << "######################" << std::endl;
