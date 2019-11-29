@@ -220,10 +220,11 @@ bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, Rect &box
         cout << l << endl;
     }
 
+    if (linesPassThroughBoxCentre(lines, box, MIN_LINES_IN_DARTBOARD) && lines.size() >= MIN_LINES_IN_DARTBOARD) {
+        return true;
+    }
+
     if (circles.size() == 0) {
-        if (linesPassThroughBoxCentre(lines, box, lines.size() - 1) && lines.size() >= MIN_LINES_IN_DARTBOARD) {
-            return true;
-        }
         return false;
     }
 
@@ -236,10 +237,6 @@ bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, Rect &box
     }
 
     if (max_circle_area > box.area() / 2.5 && circlesAreContained(circles)) {
-        return true;
-    }
-
-    if (linesPassThroughBoxCentre(lines, box, lines.size() - 2) && lines.size() >= MIN_LINES_IN_DARTBOARD) {
         return true;
     }
 
@@ -721,9 +718,9 @@ vector <Rect> detectAndDisplay(Mat frame) {
 
     // 4. Draw box around boxes found
     for (int i = 0; i < merged.size(); i++) {
-        rectangle(frame, Point(merged[i].x, merged[i].y),
-                  Point(merged[i].x + merged[i].width, merged[i].y + merged[i].height),
-                  Scalar(0, 255, 0), 2);
+    //    rectangle(frame, Point(merged[i].x, merged[i].y),
+     //             Point(merged[i].x + merged[i].width, merged[i].y + merged[i].height),
+      //            Scalar(0, 255, 0), 2);
     }
     return merged;
 }
