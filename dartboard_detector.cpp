@@ -362,7 +362,6 @@ vector <Rect> pipeline(Mat &frame) {
 
     //for every detection, apply hough transforms to find the number of circles and lines
     for (auto &rect: violaJonesDetections) {
-
         auto rgb_viola_jones = frame(rect);
         Mat gray_viola_jones;
         cvtColor(rgb_viola_jones, gray_viola_jones, CV_BGR2GRAY);
@@ -496,10 +495,6 @@ vector <Line> collect_lines_from_houghSpace(Mat &houghSpace,
                 auto l = Line(rho, theta, point1, point2);
 
                 lines.push_back(l);
-
-                houghSpace.at<double>(rho, theta) = 255;
-            } else {
-                houghSpace.at<double>(rho, theta) = 0.0;
             }
         }
     }
