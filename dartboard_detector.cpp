@@ -99,6 +99,9 @@ vector <Circle> filter_circles(vector <Circle> &circles) {
 string get_csv_file(string filePrefix, const string fileExtension, const string imgName);
 
 vector <Line> filter_lines_by_theta(vector <Line> &lines, int threshold) {
+    if (lines.size() == 0) {
+        return lines;
+    }
     std::sort(lines.begin(), lines.end(), compareByTheta);
     auto window_begin = 0;
     auto window_end = 0;
@@ -841,7 +844,6 @@ float f1_test(vector <Rect> &detected, vector <Rect> &ground_truth, float thresh
                         matched.insert(j);
                     }
                     matchFound = true;
-                    break;
                 }
             }
         }
