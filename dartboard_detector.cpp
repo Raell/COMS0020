@@ -716,12 +716,13 @@ vector <Rect> detectAndDisplay(Mat frame) {
     // 3. Print number of boxes found
     cout << "dartboards detected: " << merged.size() << std::endl;
 
+    /*
     // 4. Draw box around boxes found
     for (int i = 0; i < merged.size(); i++) {
-    //    rectangle(frame, Point(merged[i].x, merged[i].y),
-     //             Point(merged[i].x + merged[i].width, merged[i].y + merged[i].height),
-      //            Scalar(0, 255, 0), 2);
-    }
+        rectangle(frame, Point(merged[i].x, merged[i].y),
+                  Point(merged[i].x + merged[i].width, merged[i].y + merged[i].height),
+                  Scalar(0, 255, 0), 2);
+    }*/
     return merged;
 }
 
