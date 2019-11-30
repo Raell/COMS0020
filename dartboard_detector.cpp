@@ -104,13 +104,15 @@ vector <Circle> filter_circles(vector <Circle> &circles) {
 string get_csv_file(string filePrefix, const string fileExtension, const string imgName);
 
 vector <Line> filter_lines_by_theta(vector <Line> &lines, int threshold) {
+    if (lines.size() == 0) {
+        return lines;
+    }
     std::sort(lines.begin(), lines.end(), compareByTheta);
     auto window_begin = 0;
     auto window_end = 0;
     vector <Line> distinct;
 
-    //maintains a sliding window to capture the range of lines 
-    // satisfying the threshold
+    //maintains a sliding window to capture the range of lines satisfying the threshold
     while (window_end < lines.size()) {
         if (lines[window_begin].theta + threshold < lines[window_end].theta) {
             distinct.push_back(lines[window_begin]);
@@ -118,9 +120,8 @@ vector <Line> filter_lines_by_theta(vector <Line> &lines, int threshold) {
         }
         window_end += 1;
     }
-    if (lines.size() > 0) {
-        distinct.push_back(lines[window_begin]);
-    }
+
+    distinct.push_back(lines[window_begin]);
     return distinct;
 }
 
