@@ -118,7 +118,9 @@ vector <Line> filter_lines_by_theta(vector <Line> &lines, int threshold) {
         }
         window_end += 1;
     }
-
+    if (lines.size() > 0) {
+        distinct.push_back(lines[window_begin]);
+    }
     return distinct;
 }
 
