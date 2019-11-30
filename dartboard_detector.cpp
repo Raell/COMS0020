@@ -327,13 +327,11 @@ vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir) {
     auto voting_threshold = calculate_houghCircles_voting_threshold(houghSpace);
     for (int y = 0; y < image.rows; y++) {
         for (int x = 0; x < image.cols; x++) {
-            int sum = 0;
             for (int r = 0; r < radius; r++) {
                 if (houghSpace[y][x][r] > voting_threshold) {
                     Circle c = Circle(x, y, r);
                     circles.push_back(c);
                 }
-                sum += houghSpace[y][x][r];
             }
         }
     }
