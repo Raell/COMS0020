@@ -6,12 +6,17 @@
 #include <array>
 #include <fstream>
 #include <unordered_set>
+#include <unistd.h>
+#include <sys/types.h>
 
 #define PI 3.14159265
 
 #define GRADIENT_THRESHOLD 200
+
+#define CANNY_LOW_THRESHOLD 100
+#define CANNY_HIGH_THRESHOLD CANNY_LOW_THRESHOLD*3
 #define ANGLE_RANGE 30
-#define MIN_LINES_IN_DARTBOARD 6
+#define MIN_LINES_IN_DARTBOARD 5
 
 #define MERGE_THRESHOLD 0.15
 #define IOU_THRESHOLD 0.3
@@ -120,21 +125,22 @@ vector <Line> filter_lines_by_theta(vector <Line> &lines, int threshold) {
     return distinct;
 }
 
-String CASCADE_NAME = "dartcascade/best.xml";
 CascadeClassifier cascade;
 
 vector <Rect> getGroundTruthsFromCSV(string csv);
 string get_csv_file(const char *imgName);
-vector <Rect> detectAndDisplay(Mat frame);
+vector <Rect> detectAndDisplay(Mat frame, bool merge);
 
 vector <Rect> merge_boxes(const vector <Rect> boxes);
 
-float f1_test(vector <Rect> &detected, vector <Rect> &actual, float threshold);
+tuple<float, float> f1_test(vector <Rect> &detected, vector <Rect> &ground_truth, 
+    string output, string img_name, float threshold);
 
 Mat convolution(Mat &input, int direction, Mat kernel, cv::Size image_size);
 
 void drawLines(Mat &image, Mat thresholdedMag, std::vector <Line> &detected_lines);
 void drawCircles(Mat &image, vector <Circle> &circles);
+void drawDetections(Mat &image, vector<Rect> detections, vector<Rect> ground_truths);
 
 Rect contractBox(Rect &box);
 
@@ -158,7 +164,7 @@ vector <Rect> pipeline(Mat &frame);
 double calculate_houghLines_voting_threshold(Mat &hough_space) {
     double max, min;
     cv::minMaxLoc(hough_space, &min, &max);
-    double houghSpaceThreshold = min + ((max - min) / 2) + 50;
+    double houghSpaceThreshold = min + ((max - min) / 2) + 10;
     return houghSpaceThreshold;
 }
 
@@ -209,9 +215,8 @@ bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, Rect &box
      *
      */
 
-
     circles = filter_circles(circles);
-    lines = filter_lines_by_theta(lines, 30);
+    lines = filter_lines_by_theta(lines, 25);
 
     cout << "circles detected: " << circles.size() << endl;
     cout << "lines detected: " << lines.size() << endl;
@@ -320,6 +325,7 @@ vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir) {
             }
         }
     }
+
     vector <Circle> circles;
     auto voting_threshold = calculate_houghCircles_voting_threshold(houghSpace);
     for (int y = 0; y < image.rows; y++) {
@@ -336,7 +342,7 @@ vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir) {
     return circles;
 }
 
-vector <Rect> pipeline(Mat &frame) {
+vector <Rect> pipeline(Mat &frame, bool canny, bool merge) {
 
     vector <Rect> best_detections;
 
@@ -353,12 +359,13 @@ vector <Rect> pipeline(Mat &frame) {
 
 
     //get viola-jones detections and draw then in GREEN.
-    auto violaJonesDetections = detectAndDisplay(frame);
+    auto violaJonesDetections = detectAndDisplay(frame, merge);
 
     imwrite("result/violaJonesDetections.jpg", frame);
 
     //for every detection, apply hough transforms to find the number of circles and lines
     for (auto &rect: violaJonesDetections) {
+
         auto rgb_viola_jones = frame(rect);
         Mat gray_viola_jones;
         cvtColor(rgb_viola_jones, gray_viola_jones, CV_BGR2GRAY);
@@ -366,20 +373,44 @@ vector <Rect> pipeline(Mat &frame) {
         Mat dfdx = convolution(gray_viola_jones, 0, dxKernel, gray_viola_jones.size());
         Mat dfdy = convolution(gray_viola_jones, 1, dyKernel, gray_viola_jones.size());
 
-        Mat gradientMagnitude = getMagnitude(dfdx, dfdy, gray_viola_jones.size());
         Mat gradientDirection = getDirection(dfdx, dfdy, gray_viola_jones.size());
+        imwrite("dir.jpg", gradientDirection);
 
         Mat thresholdedMag;
         thresholdedMag.create(gray_viola_jones.size(), CV_64F);
-        getThresholdedMag(gradientMagnitude, thresholdedMag, GRADIENT_THRESHOLD);
+
+        if (canny)
+        {
+            Mat gradientMagnitude;
+            blur(gray_viola_jones, gradientMagnitude, Size(3,3));
+            Canny( gradientMagnitude, gradientMagnitude, 
+                CANNY_LOW_THRESHOLD, CANNY_HIGH_THRESHOLD, 3);
+
+            gradientMagnitude.convertTo(gradientMagnitude, CV_64F);
+
+            thresholdedMag = gradientMagnitude;
+
+        }
+        else 
+        {
+            Mat gradientMagnitude = getMagnitude(dfdx, dfdy, gray_viola_jones.size());
+            getThresholdedMag(gradientMagnitude, thresholdedMag, GRADIENT_THRESHOLD);
+        }
+
+        imwrite("magnew.jpg", thresholdedMag);
 
         auto circles = houghCircles(gray_viola_jones, thresholdedMag, gradientDirection);
 
         auto houghSpace = get_houghSpaceLines(thresholdedMag, gradientDirection, gray_viola_jones.cols,
                                               gray_viola_jones.rows);
 
+        imwrite("houghnew.jpg", houghSpace);
+
         auto houghLinesThreshold = calculate_houghLines_voting_threshold(houghSpace);
         auto lines = collect_lines_from_houghSpace(houghSpace, houghLinesThreshold, rect);
+
+        cout << "lines found: " << lines.size() << endl;
+        cout << "circles found: " << circles.size() << endl;
 
         if (dartboardDetected(circles, lines, rect)) {
             counter += 1;
@@ -389,12 +420,12 @@ vector <Rect> pipeline(Mat &frame) {
             drawCircles(rgb_viola_jones, circles);
             best_detections.push_back(rect);
 
-
         } else {
             cout << "result: NOT detected" << endl;
+            drawLines(rgb_viola_jones, thresholdedMag, lines);
         }
-
         cout << "######################" << std::endl;
+
     }
 
     cout << "Total dartboards detected: " << counter << endl;
@@ -405,23 +436,162 @@ vector <Rect> pipeline(Mat &frame) {
 
 int main(int argc, const char **argv) {
 
-    const char *imgName = argv[1];
+    char cwd[PATH_MAX];
+    getcwd(cwd, sizeof(cwd));
+    string dir(cwd);
+    string input_folder = dir + "/images/";
+    string cascade_name = dir + "/dartcascade/best.xml";
+    string output_folder = dir +"/annotated/dartboard/";
+    string ground_truth_folder = dir + "/CSVs/dartboard/";
+    bool merge = true;
+    bool canny = true;
+    bool use_pipeline = true;
+    string annotation_file_ext = "points.csv";
 
-    Mat image;
-    image = imread(imgName, 1);
+    int opt;
 
-    auto best_detections = pipeline(image);
+    while ((opt = getopt(argc, (char **) argv, "p:i:c:o:a:")) != -1) {
+        switch (opt) {
+            case 'i':
+                input_folder = optarg;
+                break;
+            case 'c':
+                cascade_name = optarg;
+                break;
+            case 'o':
+                output_folder = optarg;
+                break;
+            case 'a':
+                ground_truth_folder = optarg;
+                break;
+            case 'p': {
+                if (strcmp(optarg, "FULL") == 0) {
+                    break;
+                }
+                else if (strcmp(optarg, "CANNY") == 0) {
+                    merge = false;
+                    break;
+                }
+                else if (strcmp(optarg, "MERGE") == 0) {
+                    canny = false;
+                    break;
+                }
+                else if (strcmp(optarg, "BASIC") == 0) {
+                    merge = false;
+                    canny = false;
+                    break;
+                }
+                else if (strcmp(optarg, "VJ") == 0) {
+                    merge = false;
+                    canny = false;
+                    use_pipeline = false;
+                    break;
+                }
+            }
+            default: /* '?' */
+                string usage = "\nUsage: " + string(argv[0]);
+                usage += " [-i input_folder] [-c cascade_xml] [-o output_folder] [-a annotations_folder] [-p PIPELINE]\n\n";
+                usage += "Options:\n";
+                usage += "-i input_folder, specifies image folder\n";
+                usage += "-c cascade_xml, specifies trained cascade.xml file to use\n";
+                usage += "-o output_folder, specifies output folder for results\n";
+                usage += "-a annotations_folder, specifies folder containing annotations in csv files\n";
+                usage += "-p PIPELINE, flag to set what pipeline is run\n";
+                usage += "\tParameters:\n";
+                usage += "\tFULL - entire detection pipeline with merge and canny edges (default)\n";
+                usage += "\tCANNY - detection pipeline with canny edges\n";
+                usage += "\tMERGE - detection pipeline with merge\n";
+                usage += "\tBASIC - basic detection pipeline\n";
+                usage += "\tVJ - only use Viola-Jones detector\n";
+                cerr << usage << endl;
+                exit(EXIT_FAILURE);
+        }
+    }
 
-    auto filePrefix = "CSVs/dartboard/";
-    auto fileExtension = "points.csv";
-    auto filename = get_csv_file(filePrefix, fileExtension, imgName);
-    auto ground_truths = getGroundTruthsFromCSV(filename);
-    float f1 = f1_test(best_detections, ground_truths, IOU_THRESHOLD);
-    cout << "F1 score: " << f1;
-    return 0;
+    // Read the input folder
+    Vector<string> files;
+    for (int i = 0; i <= 15; i++) {
+        files.push_back("dart" + to_string(i) + ".jpg");
+    }
+
+    string results_output = output_folder + "results.txt";
+    // Clear file if exists
+    remove(results_output.c_str());
+
+    float avg_tpr = 0;
+    float avg_f1 = 0;
+
+    if( !cascade.load( cascade_name ) ){ printf("--(!)Error loading\n"); return -1; };
+
+    for (auto i: files)
+    {     
+        // 1. Read Input Image
+        Mat frame = imread(input_folder + i, CV_LOAD_IMAGE_COLOR);
+
+        if(!frame.data )                              // Check for invalid input
+        {
+            cout <<  "Could not open or find the image " << input_folder + i << std::endl ;
+            return -1;
+        }
+
+        string csv_file_path = get_csv_file(ground_truth_folder, annotation_file_ext, i);
+
+        vector<Rect> ground_truths = getGroundTruthsFromCSV(csv_file_path);
+
+        // 3. Detect Faces and Display Result
+        vector<Rect> best_detections;
+    
+
+        Mat frame_clone = frame.clone();
+
+        if (use_pipeline) {
+            best_detections = pipeline(frame_clone, canny, merge);
+        }
+        else {
+            best_detections = detectAndDisplay(frame_clone, merge);
+        }
+        // vector<Rect> detected = detectAndDisplay( frame, ground_truths, merge );
+
+        tuple<float,float> results = f1_test(best_detections, ground_truths, results_output, i, IOU_THRESHOLD);
+
+        avg_tpr += get<0>(results);
+        avg_f1 += get<1>(results);
+
+        // 4. Save Result Image
+        drawDetections(frame, best_detections, ground_truths);
+        imwrite( output_folder + i , frame );
+        
+    }
+
+    avg_tpr /= 16;
+    avg_f1 /= 16;
+
+    ofstream output_file;
+    output_file.open(results_output, fstream::app);
+    output_file << "Avg TPR: " << avg_tpr << "\n";
+    output_file << "Avg F1: " << avg_f1 << "\n\n";
+    output_file.close();
 }
 
-void drawLines(Mat &image, Mat thresholdedMag, std::vector <Line> &detected_lines) {
+void drawDetections(Mat &image, vector<Rect> detections, vector<Rect> ground_truths) {
+    for(auto det : detections)
+    {
+        rectangle(image, Point(det.x, det.y), 
+            Point(det.x + det.width, det.y + det.height), 
+            Scalar( 0, 255, 0 ), 2);
+    }
+
+    for (auto gt : ground_truths) 
+    {
+        //draw a red bounding box
+        rectangle(image, Point(gt.x, gt.y), 
+            Point(gt.x + gt.width, gt.y + gt.height),
+                  Scalar(0, 0, 255), 2);
+    }
+}
+
+void drawLines(Mat &image, Mat thresholdedMag, std::vector <Line> &detected_lines) 
+{
 
     Mat lines(image.size(), image.type(), Scalar(0));
     int width = image.cols;
@@ -508,7 +678,7 @@ Mat get_houghSpaceLines(Mat &thresholdMag, Mat &gradientDirection, int width, in
     for (int y = 0; y < thresholdMag.rows; y++) {
         for (int x = 0; x < thresholdMag.cols; x++) {
             double value = thresholdMag.at<double>(y, x);
-            if (value == 255.0) {
+            if (value >= 255) {
                 double direction = gradientDirection.at<double>(y, x);
                 double direction_angle;
                 if (direction > 0) {
@@ -686,7 +856,7 @@ Rect contractBox(Rect &box) {
     return newBox;
 }
 
-vector <Rect> detectAndDisplay(Mat frame) {
+vector <Rect> detectAndDisplay(Mat frame, bool merge) {
     Mat frame_gray;
     vector <Rect> detected;
 
@@ -695,34 +865,20 @@ vector <Rect> detectAndDisplay(Mat frame) {
     equalizeHist(frame_gray, frame_gray);
 
 
-    //load the cascade
-    if (!cascade.load(CASCADE_NAME)) {
-        printf("--(!)Error loading Cascade\n");
-        std::exit(0);
-    };
-
-
     // 2. Perform Viola-Jones Object Detection
     cascade.detectMultiScale(frame_gray, detected, 1.1, 1, 0 | CV_HAAR_SCALE_IMAGE, Size(50, 50), Size(500, 500));
 
-    cout << "boxes before merging: " << detected.size() << std::endl;
+    cout << "boxes found: " << detected.size() << std::endl;
+
+    vector<Rect> merged = detected;
 
     // 2.5 Merge overlapping rectangles
-    auto merged = merge_boxes(detected);
+    if (merge) {
+        merged = merge_boxes(detected);
+        cout << "boxes after merging: " << merged.size() << std::endl;
+    }
+    
 
-    cout << "boxes after merging: " << merged.size() << std::endl;
-
-
-    // 3. Print number of boxes found
-    cout << "dartboards detected: " << merged.size() << std::endl;
-
-    /*
-    // 4. Draw box around boxes found
-    for (int i = 0; i < merged.size(); i++) {
-        rectangle(frame, Point(merged[i].x, merged[i].y),
-                  Point(merged[i].x + merged[i].width, merged[i].y + merged[i].height),
-                  Scalar(0, 255, 0), 2);
-    }*/
     return merged;
 }
 
@@ -814,10 +970,10 @@ vector <Rect> merge_boxes(const vector <Rect> boxes) {
     return partitioned_boxes;
 }
 
-float f1_test(vector <Rect> &detected, vector <Rect> &ground_truth, float threshold) {
+tuple<float,float> f1_test(vector <Rect> &detected, vector <Rect> &ground_truth, string output, string img_name, float threshold) {
     int truePositives = 0;
     int falsePositives = 0;
-    unordered_set<int> matched;
+    set<int> matched;
 
     for (int i = 0; i < detected.size(); i++) {
         bool matchFound = false;
@@ -844,26 +1000,38 @@ float f1_test(vector <Rect> &detected, vector <Rect> &ground_truth, float thresh
             falsePositives++;
         }
     }
-    std::cout << "true positives: " << truePositives << ", false positives: " << falsePositives << "\n";
-    std::cout << "ground truths: " << ground_truth.size() << endl;
 
     // Precision = TP / (TP + FP)
     // Recall = TPR (True Positive Rate)
     // F1 = 2((PRE * REC)/(PRE + REC))
     int falseNegatives = ground_truth.size() - truePositives;
+
     float precision = (float) truePositives / (truePositives + falsePositives);
     float recall = (float) truePositives / ground_truth.size();
     float f1;
     if (precision > 0 && recall > 0) {
         f1 = 2 * (precision * recall) / (precision + recall);
-    } else if (!truePositives && !falsePositives && !falseNegatives) {
+    }
+    else if (!truePositives && !falsePositives && !falseNegatives) {
         f1 = 1;
         recall = 1;
-    } else {
+    }
+    else {
         f1 = 0;
         recall = 0;
     }
-    return f1;
+    
+    // Appends results to output file
+    ofstream output_file;
+    output_file.open(output, fstream::app);
+    output_file << img_name << "\n";
+    output_file << "total detected: " << detected.size() << ", ground truth: " << ground_truth.size() << "\n";
+    output_file << "true positives: " << truePositives << ", false positives: " << falsePositives << "\n";
+    output_file << "TPR: " << recall << "\n";
+    output_file << "f1 score: " << f1 << "\n\n";
+    output_file.close();
+
+    return make_tuple(recall, f1);
 }
 
 vector <Rect> getGroundTruthsFromCSV(string csv) {
