@@ -864,37 +864,20 @@ vector <Rect> detectAndDisplay(Mat frame, bool merge) {
     equalizeHist(frame_gray, frame_gray);
 
 
-    // //load the cascade
-    // if (!cascade.load(CASCADE_NAME)) {
-    //     printf("--(!)Error loading Cascade\n");
-    //     std::exit(0);
-    // };
-
-
     // 2. Perform Viola-Jones Object Detection
     cascade.detectMultiScale(frame_gray, detected, 1.1, 1, 0 | CV_HAAR_SCALE_IMAGE, Size(50, 50), Size(500, 500));
 
-    // cout << "boxes before merging: " << detected.size() << std::endl;
+    cout << "boxes found: " << detected.size() << std::endl;
 
     vector<Rect> merged = detected;
 
     // 2.5 Merge overlapping rectangles
     if (merge) {
         merged = merge_boxes(detected);
-        // cout << "boxes after merging: " << merged.size() << std::endl;
+        cout << "boxes after merging: " << merged.size() << std::endl;
     }
     
 
-
-    // 3. Print number of boxes found
-    // cout << "dartboards detected: " << merged.size() << std::endl;
-
-    // 4. Draw box around boxes found
-    // for (int i = 0; i < merged.size(); i++) {
-    //     rectangle(frame, Point(merged[i].x, merged[i].y),
-    //               Point(merged[i].x + merged[i].width, merged[i].y + merged[i].height),
-    //               Scalar(0, 255, 0), 2);
-    // }
     return merged;
 }
 
