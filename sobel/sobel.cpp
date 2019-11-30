@@ -7,7 +7,7 @@
 
 #define PI 3.14159265
 
-#define GRADIENT_THRESHOLD 200
+#define GRADIENT_THRESHOLD 150
 #define ANGLE_RANGE 20
 
 using namespace cv;
@@ -49,6 +49,14 @@ std::ostream &operator<<(std::ostream &strm, const Circle &circle) {
     return strm << "Circle: x= " << circle.x << " y=" << circle.y << " r=" << circle.r;
 }
 
+String CASCADE_NAME = "../dartcascade/best.xml";
+CascadeClassifier cascade;
+
+vector <Rect> getGroundTruthsFromCSV(string csv);
+string get_csv_file(const char *imgName);
+vector <Rect> detectAndDisplay(Mat frame);
+float f1_test(vector <Rect> &detected, vector <Rect> &actual, float threshold);
+
 Mat convolution(Mat &input, int direction, Mat kernel, cv::Size image_size);
 
 void drawLines(Mat &image, Mat thresholdedMag, std::vector <Line> &detected_lines);
@@ -79,20 +87,20 @@ void drawCircles(Mat &image, vector <Circle> &circles) {
     imwrite("result/foundCircles.jpg", image);
 }
 
-
 vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir, int voting_threshold) {
 
     int radius = image.rows / 2;
 
-    int  rows{image.rows};
-    int  cols{image.cols};
+    int rows{image.rows};
+    int cols{image.cols};
     int initialValue{0};
 
 
     // Define 3 dimensional vector and initialize it.
     //create a houghspace parameterized on circle centre (x,y) and radius (r)
 
-    std::vector<std::vector<std::vector<int>>> houghSpace(rows, std::vector<std::vector<int>>(cols, std::vector<int>(radius,initialValue)));
+    std::vector < std::vector < std::vector < int >> >
+    houghSpace(rows, std::vector < std::vector < int >> (cols, std::vector<int>(radius, initialValue)));
 
     for (int y = 0; y < image.rows; y++) {
         for (int x = 0; x < image.cols; x++) {
@@ -135,8 +143,60 @@ vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir, i
         }
     }
 
-
     return circles;
+}
+
+void pipeline(Mat &frame) {
+
+    Mat dxKernel = (Mat_<double>(3, 3) << -1, 0, 1,
+            -2, 0, 2,
+            -1, 0, 1);
+
+    Mat dyKernel = (Mat_<double>(3, 3) << -1, -2, -1,
+            0, 0, 0,
+            1, 2, 1);
+
+
+    //get viola-jones detections and draws then in GREEN.
+    auto violaJonesDetections = detectAndDisplay(frame);
+
+    imwrite("result/violaJonesDetections.jpg", frame);
+
+    cvtColor(frame, frame, CV_BGR2GRAY);
+
+    //for every detection, apply hough transform to find the number of circles and lines
+    for (auto &rect: violaJonesDetections) {
+        auto violaJonesFrame = frame(rect);
+        Mat dfdx = convolution(violaJonesFrame, 0, dxKernel, violaJonesFrame.size());
+        Mat dfdy = convolution(violaJonesFrame, 1, dyKernel, violaJonesFrame.size());
+
+        Mat gradientMagnitude = getMagnitude(dfdx, dfdy, violaJonesFrame.size());
+        Mat gradientDirection = getDirection(dfdx, dfdy, violaJonesFrame.size());
+
+        Mat thresholdedMag;
+        thresholdedMag.create(violaJonesFrame.size(), CV_64F);
+
+        getThresholdedMag(gradientMagnitude, thresholdedMag, GRADIENT_THRESHOLD);
+        auto circles = houghCircles(violaJonesFrame, thresholdedMag, gradientDirection, 30);
+
+
+        if (circles.size() == 0) continue;
+        drawCircles(frame, circles);
+
+        cout << "cirlces detected " << circles.size();
+
+        Mat houghSpace = get_houghSpaceLines(thresholdedMag, gradientDirection, violaJonesFrame.cols,
+                                             violaJonesFrame.rows);
+
+        auto houghLinesThreshold = calculate_houghLines_voting_threshold(houghSpace);
+        auto lines = collect_lines_from_houghSpace(houghSpace, houghLinesThreshold);
+        auto houghLines = get_houghSpaceLines(thresholdedMag, gradientDirection, violaJonesFrame.cols,
+                                              violaJonesFrame.rows);
+
+        drawLines(violaJonesFrame, thresholdedMag, lines);
+
+    }
+
 }
 
 int main(int argc, const char **argv) {
@@ -149,7 +209,10 @@ int main(int argc, const char **argv) {
     // namedWindow( "Original Image", CV_WINDOW_AUTOSIZE );
     // imshow( "Original Image", image );
 
-    cvtColor(image, image, CV_BGR2GRAY);
+
+
+  cvtColor(image, image, CV_BGR2GRAY);
+
 
 
     //init kernels
@@ -421,4 +484,84 @@ void getThresholdedMag(Mat &input, Mat &output, double gradient_threshold) {
     }
 
     imwrite("result/thresholded.jpg", output);
+}
+
+vector <Rect> detectAndDisplay(Mat frame) {
+    Mat frame_gray;
+    vector <Rect> detected;
+
+    // 1. Prepare Image by turning it into Grayscale and normalising lighting
+    cvtColor(frame, frame_gray, CV_BGR2GRAY);
+    equalizeHist(frame_gray, frame_gray);
+
+
+    //load the cascade
+    if (!cascade.load(CASCADE_NAME)) {
+        printf("--(!)Error loading Cascade\n");
+        std::exit(0);
+    };
+
+
+    // 2. Perform Viola-Jones Object Detection
+    cascade.detectMultiScale(frame_gray, detected, 1.1, 1, 0 | CV_HAAR_SCALE_IMAGE, Size(50, 50), Size(500, 500));
+
+    // 2.5 Merge overlapping rectangles
+    // groupRectangles(detected, 3, 0.8);
+
+
+    // 3. Print number of Faces found
+    cout << "dartboards detected: " << detected.size() << std::endl;
+
+    // 4. Draw box around faces found
+    for (int i = 0; i < detected.size(); i++) {
+        rectangle(frame, Point(detected[i].x, detected[i].y),
+                  Point(detected[i].x + detected[i].width, detected[i].y + detected[i].height),
+                  Scalar(0, 255, 0), 2);
+    }
+    return detected;
+}
+
+float f1_test(vector <Rect> &detected, vector <Rect> &ground_truth, float threshold) {
+    int truePositives = 0;
+    int falsePositives = 0;
+    for (int i = 0; i < detected.size(); i++) {
+        bool matchFound = false;
+        for (int j = 0; j < ground_truth.size(); j++) {
+            Rect intersection = detected[i] & ground_truth[j];
+            Rect box_union = detected[i] | ground_truth[j];
+            float intersectionArea = intersection.area();
+            float unionArea = box_union.area();
+            if (intersectionArea > 0) {
+                float matchPercentage = (intersectionArea / unionArea) * 100;
+                if (matchPercentage > threshold) {
+                    truePositives++;
+                    matchFound = true;
+                    cout << intersectionArea << endl;
+                    break;
+                }
+            }
+        }
+        if (!matchFound) {
+            falsePositives++;
+        }
+    }
+    std::cout << "true positives: " << truePositives << ", false positives: " << falsePositives << "\n";
+
+    // Precision = TP / (TP + FP)
+    // Recall = TPR (True Positive Rate)
+    // F1 = 2((PRE * REC)/(PRE + REC))
+    int falseNegatives = ground_truth.size() - truePositives;
+    float precision = (float) truePositives / ((float) truePositives + (float) falsePositives);
+    float recall = (float) truePositives / (float) ground_truth.size();
+    float f1;
+    if (precision > 0 && recall > 0) {
+        f1 = 2 * (precision * recall) / (precision + recall);
+    } else if (!truePositives && !falsePositives && !falseNegatives) {
+        f1 = 1;
+        recall = 1;
+    } else {
+        f1 = 0;
+        recall = 0;
+    }
+    return f1;
 }
