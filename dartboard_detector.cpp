@@ -119,7 +119,6 @@ vector <Line> filter_lines_by_theta(vector <Line> &lines, int threshold) {
         window_end += 1;
     }
 
-    // distinct.push_back(lines[window_begin]);
     return distinct;
 }
 
@@ -1023,8 +1022,8 @@ tuple<float,float> f1_test(vector <Rect> &detected, vector <Rect> &ground_truth,
     // F1 = 2((PRE * REC)/(PRE + REC))
     int falseNegatives = ground_truth.size() - truePositives;
 
-    float precision = (float) truePositives / ((float) truePositives + (float) falsePositives);
-    float recall = (float) truePositives / (float) ground_truth.size();
+    float precision = (float) truePositives / (truePositives + falsePositives);
+    float recall = (float) truePositives / ground_truth.size();
     float f1;
     if (precision > 0 && recall > 0) {
         f1 = 2 * (precision * recall) / (precision + recall);
