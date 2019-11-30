@@ -212,18 +212,16 @@ bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, Rect &box
      * (5) If none of the conditions above are met, there is no dartboard
      *
      */
-    // cout << circles.size() << endl;
-    // cout << lines.size() << endl;
 
     circles = filter_circles(circles);
     lines = filter_lines_by_theta(lines, 25);
 
-    // cout << "circles detected: " << circles.size() << endl;
-    // cout << "lines detected: " << lines.size() << endl;
+    cout << "circles detected: " << circles.size() << endl;
+    cout << "lines detected: " << lines.size() << endl;
 
-    // for (auto &l: lines) {
-    //     cout << l << endl;
-    // }
+    for (auto &l: lines) {
+        cout << l << endl;
+    }
 
     if (linesPassThroughBoxCentre(lines, box, MIN_LINES_IN_DARTBOARD) && lines.size() >= MIN_LINES_IN_DARTBOARD) {
         return true;
@@ -326,12 +324,6 @@ vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir) {
         }
     }
 
-    Mat h_cir;
-    h_cir.create(image.rows, image.cols, CV_64F);
-
-    // cout << image.size() << endl;
-
-
     vector <Circle> circles;
     auto voting_threshold = calculate_houghCircles_voting_threshold(houghSpace);
     for (int y = 0; y < image.rows; y++) {
@@ -344,13 +336,8 @@ vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir) {
                 }
                 sum += houghSpace[y][x][r];
             }
-            // cout << Point(x,y) << " " << sum << endl;
-            h_cir.at<double>(y,x) = sum;
         }
     }
-
-    normalize(h_cir, h_cir, 0, 255, NORM_MINMAX);
-    imwrite("h_cir.jpg", h_cir);
 
     return circles;
 }
@@ -394,8 +381,7 @@ vector <Rect> pipeline(Mat &frame, bool canny, bool merge) {
 
         if (canny)
         {
-            Mat gradientMagnitude, temp;
-            temp = Scalar::all(0);
+            Mat gradientMagnitude;
             blur(gray_viola_jones, gradientMagnitude, Size(3,3));
             Canny( gradientMagnitude, gradientMagnitude, 
                 CANNY_LOW_THRESHOLD, CANNY_HIGH_THRESHOLD, 3);
@@ -423,30 +409,26 @@ vector <Rect> pipeline(Mat &frame, bool canny, bool merge) {
         auto houghLinesThreshold = calculate_houghLines_voting_threshold(houghSpace);
         auto lines = collect_lines_from_houghSpace(houghSpace, houghLinesThreshold, rect);
 
-        // cout << "lines found: " << lines.size() << endl;
-        // cout << "circles found: " << circles.size() << endl;
+        cout << "lines found: " << lines.size() << endl;
+        cout << "circles found: " << circles.size() << endl;
 
         if (dartboardDetected(circles, lines, rect)) {
             counter += 1;
-            // cout << "result: detected" << endl;
+            cout << "result: detected" << endl;
 
             drawLines(rgb_viola_jones, thresholdedMag, lines);
             drawCircles(rgb_viola_jones, circles);
             best_detections.push_back(rect);
 
         } else {
-            // cout << "result: NOT detected" << endl;
+            cout << "result: NOT detected" << endl;
             drawLines(rgb_viola_jones, thresholdedMag, lines);
         }
-        // cout << "######################" << std::endl;
-        // count += 1;
-        // if (count == 1) {
-        //     break;
-        // }
+        cout << "######################" << std::endl;
 
     }
 
-    // cout << "Total dartboards detected: " << counter << endl;
+    cout << "Total dartboards detected: " << counter << endl;
 
     imwrite("result/detections.jpg", frame);
     return best_detections;
@@ -558,39 +540,6 @@ int main(int argc, const char **argv) {
 
         // 3. Detect Faces and Display Result
         vector<Rect> best_detections;
-
-        // Mat gray_viola_jones;
-        // cvtColor(frame, gray_viola_jones, CV_BGR2GRAY);
-
-        // Mat dxKernel = (Mat_<double>(3, 3) << -1, 0, 1,
-        //     -2, 0, 2,
-        //     -1, 0, 1);
-
-        // Mat dyKernel = (Mat_<double>(3, 3) << -1, -2, -1,
-        //         0, 0, 0,
-        //         1, 2, 1);
-
-
-        // Mat dfdx = convolution(gray_viola_jones, 0, dxKernel, gray_viola_jones.size());
-        // Mat dfdy = convolution(gray_viola_jones, 1, dyKernel, gray_viola_jones.size());
-
-        // Mat gradientDirection = getDirection(dfdx, dfdy, gray_viola_jones.size());
-
-        // Mat thresholdedMag;
-        // thresholdedMag.create(gray_viola_jones.size(), CV_64F);
-
-        // Mat gradientMagnitude = getMagnitude(dfdx, dfdy, gray_viola_jones.size());
-        // getThresholdedMag(gradientMagnitude, thresholdedMag, GRADIENT_THRESHOLD);
-
-
-        // imwrite( output_folder + "threshold" + i , thresholdedMag );
-
-        // auto circles = houghCircles(gray_viola_jones, thresholdedMag, gradientDirection);
-
-        // auto houghSpace = get_houghSpaceLines(thresholdedMag, gradientDirection, gray_viola_jones.cols,
-        //                                       gray_viola_jones.rows);
-
-        // imwrite(output_folder + "houghlines" + i, houghSpace);
     
 
         Mat frame_clone = frame.clone();
@@ -622,22 +571,6 @@ int main(int argc, const char **argv) {
     output_file << "Avg TPR: " << avg_tpr << "\n";
     output_file << "Avg F1: " << avg_f1 << "\n\n";
     output_file.close();
-
-
-    // const char *imgName = argv[1];
-
-    // Mat image;
-    // image = imread(imgName, 1);
-
-    // auto best_detections = pipeline(image);
-
-    // auto filePrefix = "CSVs/dartboard/";
-    // auto fileExtension = "points.csv";
-    // auto filename = get_csv_file(filePrefix, fileExtension, imgName);
-    // auto ground_truths = getGroundTruthsFromCSV(filename);
-    // float f1 = f1_test(best_detections, ground_truths, IOU_THRESHOLD);
-    // cout << "F1 score: " << f1;
-    // return 0;
 }
 
 void drawDetections(Mat &image, vector<Rect> detections, vector<Rect> ground_truths) {
