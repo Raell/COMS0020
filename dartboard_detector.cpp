@@ -1165,7 +1165,7 @@ tuple<vector<int>, vector<double>> calculate_ellipse_detection_threshold(Mat &im
 
 void drawEllipse(Mat &image, vector<Ellipse> hough_ellipse, Point offset) {
 
-    for (auto ellipse : hough_ellipse) {
+    for (auto &ellipse : hough_ellipse) {
 
         Point center = ellipse.center + offset;
         double major_axis = ellipse.a;
