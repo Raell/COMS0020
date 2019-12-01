@@ -1198,6 +1198,14 @@ vector<Ellipse> houghEllipse(Mat &thresholdMag, int width, int height, tuple<vec
 
     S. Inverso, “Ellipse Detection Using Randomized Hough Transform”
     www.saminverso.com/res/vision/EllipseDetectionOld.pdf, May 20, 2002
+
+    This runs in O(kn^2) where k = major_pair_limit, the main improvement vs 
+    naive O(n^5) implemntation is that instead of iterating over all possible 5
+    parameters of an ellipse we iterate over 3 points in the magnitude to calculate
+    the parameters with the second point chosen randomly k times.
+
+    The best ellipse from the inner most loop is then drawn over the magnitude
+    image and is added if there is a sufficent intesection.
     */
 
     srand( 31124 );
