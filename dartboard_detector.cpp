@@ -183,11 +183,6 @@ vector<Ellipse> houghEllipse(Mat &thresholdMag, int width, int height, tuple<vec
 
 void drawEllipse(Mat &image, vector<Ellipse> hough_ellipse, Point offset);
 
-Ellipse merge_ellipses(vector<Ellipse, int> &accumulator, Ellipse new_ellipse,  
-    double center_distance_threshold, double semimajor_axis_threshold, 
-    double semiminor_axis_threshold, double angle_threshold
-    );
-
 tuple<vector<int>, vector<double>> calculate_ellipse_detection_threshold(
     Mat &image, Mat &mag);
 
@@ -1170,12 +1165,12 @@ tuple<vector<int>, vector<double>> calculate_ellipse_detection_threshold(Mat &im
 
 void drawEllipse(Mat &image, vector<Ellipse> hough_ellipse, Point offset) {
 
-    for (auto ell : hough_ellipse) {
+    for (auto ellipse : hough_ellipse) {
 
-        Point center = ell.center + offset;
-        double major_axis = ell.a;
-        double minor_axis = ell.b;
-        double alpha = ell.alpha;
+        Point center = ellipse.center + offset;
+        double major_axis = ellipse.a;
+        double minor_axis = ellipse.b;
+        double alpha = ellipse.alpha;
         Size axes(major_axis, minor_axis);
 
         // Axes overflow for some reason
@@ -1184,7 +1179,7 @@ void drawEllipse(Mat &image, vector<Ellipse> hough_ellipse, Point offset) {
             continue;
         }
         
-        ellipse(image, center, axes, alpha, 0, 360,
+        cv::ellipse(image, center, axes, alpha, 0, 360,
             Scalar(0, 0, 255), 2);
     }
 
