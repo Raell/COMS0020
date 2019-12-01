@@ -193,7 +193,7 @@ Ellipse merge_ellipses(vector<Ellipse, int> &accumulator, Ellipse new_ellipse,
 tuple<vector<int>, vector<double>> calculate_ellipse_detection_threshold(
     Mat &image, Mat &mag);
 
-vector <Rect> pipeline(Mat &frame);
+vector <Rect> pipeline(Mat &frame, bool canny, bool merge, int show);
 
 double calculate_houghLines_voting_threshold(Mat &hough_space) {
     double max, min;
@@ -381,7 +381,7 @@ vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir) {
     return circles;
 }
 
-vector <Rect> pipeline(Mat &frame, bool canny, bool merge) {
+vector <Rect> pipeline(Mat &frame, bool canny, bool merge, int show) {
 
     vector <Rect> best_detections;
 
@@ -456,18 +456,20 @@ vector <Rect> pipeline(Mat &frame, bool canny, bool merge) {
             counter += 1;
 
             cout << "result: detected" << endl;
-
-            drawLines(rgb_viola_jones, thresholdedMag, lines);
-            drawCircles(rgb_viola_jones, circles);
-            drawEllipse(frame, ellipses, Point(rect.x, rect.y));
             best_detections.push_back(rect);
 
         } else {
             cout << "result: NOT detected" << endl;
-            drawEllipse(frame, ellipses, Point(rect.x, rect.y));
-            drawLines(rgb_viola_jones, thresholdedMag, lines);
         }
         cout << "######################" << std::endl;
+
+        if (show == 1) {
+            drawLines(rgb_viola_jones, thresholdedMag, lines);
+        } else if (show == 2) {
+            drawCircles(rgb_viola_jones, circles);
+        } else if (show == 3) {
+            drawEllipse(frame, ellipses, Point(rect.x, rect.y));
+        }
 
     }
 
@@ -489,11 +491,13 @@ int main(int argc, const char **argv) {
     bool merge = true;
     bool canny = true;
     bool use_pipeline = true;
+    int show = 0;
+    int run_dart = -1;
     string annotation_file_ext = "points.csv";
 
     int opt;
 
-    while ((opt = getopt(argc, (char **) argv, "p:i:c:o:a:")) != -1) {
+    while ((opt = getopt(argc, (char **) argv, "p:i:c:o:a:s:d:")) != -1) {
         switch (opt) {
             case 'i':
                 input_folder = optarg;
@@ -506,6 +510,9 @@ int main(int argc, const char **argv) {
                 break;
             case 'a':
                 ground_truth_folder = optarg;
+                break;
+            case 'd': 
+                run_dart = atoi(optarg);
                 break;
             case 'p': {
                 if (strcmp(optarg, "FULL") == 0) {
@@ -531,14 +538,29 @@ int main(int argc, const char **argv) {
                     break;
                 }
             }
+            case 's': {
+                if (strcmp(optarg, "LINES") == 0) {
+                    show = 1;
+                    break;
+                }
+                else if (strcmp(optarg, "CIRCLES") == 0) {
+                    show = 2;
+                    break;
+                }
+                else if (strcmp(optarg, "ELLIPSES") == 0) {
+                    show = 3;
+                    break;
+                }
+            }
             default: /* '?' */
                 string usage = "\nUsage: " + string(argv[0]);
-                usage += " [-i input_folder] [-c cascade_xml] [-o output_folder] [-a annotations_folder] [-p PIPELINE]\n\n";
+                usage += " [-i input_folder] [-d image_file] [-c cascade_xml] [-o output_folder] [-a annotations_folder] [-p PIPELINE] [-s SHAPES]\n\n";
                 usage += "Options:\n";
                 usage += "-i input_folder, specifies image folder\n";
                 usage += "-c cascade_xml, specifies trained cascade.xml file to use\n";
                 usage += "-o output_folder, specifies output folder for results\n";
                 usage += "-a annotations_folder, specifies folder containing annotations in csv files\n";
+                usage += "-d image_file, run single dart image number from folder \n";
                 usage += "-p PIPELINE, flag to set what pipeline is run\n";
                 usage += "\tParameters:\n";
                 usage += "\tFULL - entire detection pipeline with merge and canny edges (default)\n";
@@ -546,6 +568,11 @@ int main(int argc, const char **argv) {
                 usage += "\tMERGE - detection pipeline with merge\n";
                 usage += "\tBASIC - basic detection pipeline\n";
                 usage += "\tVJ - only use Viola-Jones detector\n";
+                usage += "-s SHAPES, flag to show detected shapes\n";
+                usage += "\tParameters:\n";
+                usage += "\tLINES - show detected lines\n";
+                usage += "\tCIRCLES - show detected circles\n";
+                usage += "\tELLIPSES - show detected ellipses\n";
                 cerr << usage << endl;
                 exit(EXIT_FAILURE);
         }
@@ -553,8 +580,13 @@ int main(int argc, const char **argv) {
 
     // Read the input folder
     Vector<string> files;
-    for (int i = 0; i <= 15; i++) {
-        files.push_back("dart" + to_string(i) + ".jpg");
+    if (run_dart == -1) {
+        for (int i = 0; i <= 15; i++) {
+            files.push_back("dart" + to_string(i) + ".jpg");
+        }
+    }
+    else {
+        files.push_back("dart" + to_string(run_dart) + ".jpg");
     }
 
     string results_output = output_folder + "results.txt";
@@ -583,15 +615,12 @@ int main(int argc, const char **argv) {
 
         // 3. Detect Faces and Display Result
         vector<Rect> best_detections;
-    
-
-        Mat frame_clone = frame.clone();
 
         if (use_pipeline) {
-            best_detections = pipeline(frame_clone, canny, merge);
+            best_detections = pipeline(frame, canny, merge, show);
         }
         else {
-            best_detections = detectAndDisplay(frame_clone, merge);
+            best_detections = detectAndDisplay(frame, merge);
         }
         // vector<Rect> detected = detectAndDisplay( frame, ground_truths, merge );
 
@@ -606,8 +635,8 @@ int main(int argc, const char **argv) {
         
     }
 
-    avg_tpr /= 16;
-    avg_f1 /= 16;
+    avg_tpr /= files.size();
+    avg_f1 /= files.size();
 
     ofstream output_file;
     output_file.open(results_output, fstream::app);
