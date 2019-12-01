@@ -183,8 +183,6 @@ vector<Ellipse> houghEllipse(Mat &thresholdMag, int width, int height, tuple<vec
 
 void drawEllipse(Mat &image, vector<Ellipse> hough_ellipse, Point offset);
 
-double weighted_params(double prev, double current, int prev_score, int curr_score, bool angles);
-
 Ellipse merge_ellipses(vector<Ellipse, int> &accumulator, Ellipse new_ellipse,  
     double center_distance_threshold, double semimajor_axis_threshold, 
     double semiminor_axis_threshold, double angle_threshold
@@ -232,7 +230,7 @@ bool circlesAreContained(vector <Circle> &circles, int threshold = 20) {
 
 }
 
-bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, vector<Ellipse> ellipses, Rect &box) {
+bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, vector<Ellipse> ellipses, bool canny, Rect &box) {
     /*
      * A greedy heuristic algorithm that confirms presence of a dartboard, by exploiting results from the viola jones detection, the box merging algorithm, and general dartboard characteristics.
      * Given that the TPR of VJ is relatively high, we can make optimistic greedy decision choices.
@@ -254,13 +252,13 @@ bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, vector<El
 
     cout << "circles detected: " << circles.size() << endl;
     cout << "lines detected: " << lines.size() << endl;
-    cout << "ellpses detected: " << ellipses.size() << endl;
+    cout << "ellipses detected: " << ellipses.size() << endl;
 
     for (auto &l: lines) {
         cout << l << endl;
     }
 
-    if (ellipses.size() == 0) {
+    if (canny && ellipses.size() == 0) {
         return false;
     }
 
@@ -452,7 +450,7 @@ vector <Rect> pipeline(Mat &frame, bool canny, bool merge, int show) {
         cout << "circles found: " << circles.size() << endl;
         cout << "ellipses found: " << ellipses.size() << endl;
 
-        if (dartboardDetected(circles, lines, ellipses, rect)) {
+        if (dartboardDetected(circles, lines, ellipses, canny, rect)) {
             counter += 1;
 
             cout << "result: detected" << endl;
@@ -1141,24 +1139,6 @@ string get_csv_file(const string filePrefix, const string fileExtension, const s
     return filePrefix + csv_filename;
 }
 
-double weighted_params(double prev, double current, int prev_score, int curr_score, bool angles) 
-{
-
-    if (!angles) {
-        return ((prev * prev_score) + (current * curr_score))/(prev_score + curr_score);
-    }
-
-    else {
-        double curr_rad = current * CV_PI/180;
-        double prev_rad = prev * CV_PI/180;
-        double avg_sin = prev_score * sin(prev_rad) + curr_score * sin(curr_rad);
-        double avg_cos = prev_score * cos(prev_rad) + curr_score * cos(curr_rad);
-        return ((avg_sin != 0 && avg_cos != 0) ? atan2(avg_sin, avg_cos) : (double) atan(0));
-    }
-    
-    
-}
-
 tuple<vector<int>, vector<double>> calculate_ellipse_detection_threshold(Mat &image, Mat &mag) {
 
     // Thresholds for detection, iteration and quantisation
@@ -1225,9 +1205,9 @@ vector<Ellipse> houghEllipse(Mat &thresholdMag, int width, int height, tuple<vec
     www.saminverso.com/res/vision/EllipseDetectionOld.pdf, May 20, 2002
     */
 
-    srand( time( NULL ) );
+    srand( 31124 );
 
-    // Stores found ecllipse in (x0, y0, a, b, alpha, score) format
+    // Stores found ellipse in (x0, y0, a, b, alpha, score) format
     vector<Ellipse> found_ellipse;
 
     // Find all edges coordinates by using the thresholded magnitude
@@ -1287,9 +1267,9 @@ vector<Ellipse> houghEllipse(Mat &thresholdMag, int width, int height, tuple<vec
                 (int)((sqrt(pow(width,2) + pow(height,2)) + 1)/accuracy), 
                 CV_64F, Scalar(0));
 
-            for (int o = m + 1; o < locations.size(); o++) {
+            for (int o = 0; o < locations.size(); o++) {
 
-                if (o == randomIndex) continue;
+                if (o == randomIndex || o == m) continue;
 
                 // Get third pixel to lookup
                 int x = locations[o].x;
