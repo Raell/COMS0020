@@ -186,7 +186,7 @@ void drawEllipse(Mat &image, vector<Ellipse> hough_ellipse, Point offset);
 tuple<vector<int>, vector<double>> calculate_ellipse_detection_threshold(
     Mat &image, Mat &mag);
 
-vector <Rect> pipeline(Mat &frame, bool canny, bool merge, int show);
+vector <Rect> pipeline(Mat &frame, bool canny, bool merge, string intermediate_folder);
 
 double calculate_houghLines_voting_threshold(Mat &hough_space) {
     double max, min;
@@ -309,11 +309,9 @@ void drawCircles(Mat &image, vector <Circle> &circles) {
         Point center(c.x, c.y);
         cv::circle(image, center, c.r, Scalar(0, 0, 255), 2, 8, 0);
     }
-
-    //  imwrite("result/foundCircles.jpg", image);
 }
 
-vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir) {
+vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir, Mat &houghSpaceCircle) {
 
     int radius = image.rows / 2;
 
@@ -358,23 +356,28 @@ vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir) {
         }
     }
 
+    houghSpaceCircle.create(thresholdMag.size(), CV_64F);
+
     vector <Circle> circles;
     auto voting_threshold = calculate_houghCircles_voting_threshold(houghSpace);
     for (int y = 0; y < image.rows; y++) {
         for (int x = 0; x < image.cols; x++) {
+            int hough_sum = 0;
             for (int r = 0; r < radius; r++) {
+                hough_sum += houghSpace[y][x][r];
                 if (houghSpace[y][x][r] > voting_threshold) {
                     Circle c = Circle(x, y, r);
                     circles.push_back(c);
                 }
             }
+            houghSpaceCircle.at<double>(y,x) = hough_sum;
         }
     }
 
     return circles;
 }
 
-vector <Rect> pipeline(Mat &frame, bool canny, bool merge, int show) {
+vector <Rect> pipeline(Mat &frame, bool canny, bool merge, string intermediate_folder) {
 
     vector <Rect> best_detections;
 
@@ -388,6 +391,10 @@ vector <Rect> pipeline(Mat &frame, bool canny, bool merge, int show) {
 
     int counter = 0;
 
+    Mat lines_img = frame.clone();
+    Mat circles_img = frame.clone();
+    Mat ellipses_img = frame.clone();
+
 
 
     //get viola-jones detections and draw then in GREEN.
@@ -397,6 +404,9 @@ vector <Rect> pipeline(Mat &frame, bool canny, bool merge, int show) {
     for (auto &rect: violaJonesDetections) {
 
         auto rgb_viola_jones = frame(rect);
+        auto lines_rect = lines_img(rect);
+        auto circles_rect = circles_img(rect);
+
         Mat gray_viola_jones;
         cvtColor(rgb_viola_jones, gray_viola_jones, CV_BGR2GRAY);
 
@@ -436,10 +446,20 @@ vector <Rect> pipeline(Mat &frame, bool canny, bool merge, int show) {
             getThresholdedMag(gradientMagnitude, thresholdedMag, GRADIENT_THRESHOLD);
         }
 
-        auto circles = houghCircles(gray_viola_jones, thresholdedMag, gradientDirection);
+        Mat houghSpaceCircle;
+
+        auto circles = houghCircles(gray_viola_jones, thresholdedMag, gradientDirection, houghSpaceCircle);
 
         auto houghSpace = get_houghSpaceLines(thresholdedMag, gradientDirection, gray_viola_jones.cols,
                                               gray_viola_jones.rows);
+
+        imwrite(intermediate_folder + "/box.jpg", rgb_viola_jones);
+        imwrite(intermediate_folder + "/dx.jpg", dfdx);
+        imwrite(intermediate_folder + "/dy.jpg", dfdy);
+        imwrite(intermediate_folder + "/magnitude.jpg", thresholdedMag);
+        imwrite(intermediate_folder + "/direction.jpg", gradientDirection);
+        imwrite(intermediate_folder + "/houghSpaceLines.jpg", houghSpace);
+        imwrite(intermediate_folder + "/houghSpaceCircles.jpg", houghSpaceCircle);
 
         auto houghLinesThreshold = calculate_houghLines_voting_threshold(houghSpace);
         auto lines = collect_lines_from_houghSpace(houghSpace, houghLinesThreshold, rect);
@@ -459,19 +479,20 @@ vector <Rect> pipeline(Mat &frame, bool canny, bool merge, int show) {
         }
         cout << "######################" << std::endl;
 
-        if (show == 1) {
-            drawLines(rgb_viola_jones, thresholdedMag, lines);
-        } else if (show == 2) {
-            drawCircles(rgb_viola_jones, circles);
-        } else if (show == 3 && canny) {
-            drawEllipse(frame, ellipses, Point(rect.x, rect.y));
+        drawLines(lines_rect, thresholdedMag, lines);
+        drawCircles(circles_rect, circles);
+        if (canny) {
+            drawEllipse(ellipses_img, ellipses, Point(rect.x, rect.y));
         }
 
     }
 
     cout << "Total dartboards detected: " << counter << endl;
 
-    imwrite("result/detections.jpg", frame);
+    imwrite(intermediate_folder + "/lines.jpg", lines_img);
+    imwrite(intermediate_folder + "/circles.jpg", circles_img);
+    imwrite(intermediate_folder + "/ellipses.jpg", ellipses_img);
+
     return best_detections;
 }
 
@@ -482,8 +503,9 @@ int main(int argc, const char **argv) {
     string dir(cwd);
     string input_folder = dir + "/images/";
     string cascade_name = dir + "/dartcascade/best.xml";
-    string output_folder = dir +"/annotated/dartboard/";
+    string output_folder = dir +"/results/dartboard/";
     string ground_truth_folder = dir + "/CSVs/dartboard/";
+    string intermediate_folder = dir + "/intermediate";
     bool merge = true;
     bool canny = true;
     bool use_pipeline = true;
@@ -493,7 +515,7 @@ int main(int argc, const char **argv) {
 
     int opt;
 
-    while ((opt = getopt(argc, (char **) argv, "p:i:c:o:a:s:d:")) != -1) {
+    while ((opt = getopt(argc, (char **) argv, "p:i:c:o:a:d:")) != -1) {
         switch (opt) {
             case 'i':
                 input_folder = optarg;
@@ -534,23 +556,9 @@ int main(int argc, const char **argv) {
                     break;
                 }
             }
-            case 's': {
-                if (strcmp(optarg, "LINES") == 0) {
-                    show = 1;
-                    break;
-                }
-                else if (strcmp(optarg, "CIRCLES") == 0) {
-                    show = 2;
-                    break;
-                }
-                else if (strcmp(optarg, "ELLIPSES") == 0) {
-                    show = 3;
-                    break;
-                }
-            }
             default: /* '?' */
                 string usage = "\nUsage: " + string(argv[0]);
-                usage += " [-i input_folder] [-d image_file] [-c cascade_xml] [-o output_folder] [-a annotations_folder] [-p PIPELINE] [-s SHAPES]\n\n";
+                usage += " [-i input_folder] [-d image_file] [-c cascade_xml] [-o output_folder] [-a annotations_folder] [-p PIPELINE]\n\n";
                 usage += "Options:\n";
                 usage += "-i input_folder, specifies image folder\n";
                 usage += "-c cascade_xml, specifies trained cascade.xml file to use\n";
@@ -564,11 +572,6 @@ int main(int argc, const char **argv) {
                 usage += "\tMERGE - detection pipeline with merge\n";
                 usage += "\tBASIC - basic detection pipeline\n";
                 usage += "\tVJ - only use Viola-Jones detector\n";
-                usage += "-s SHAPES, flag to show detected shapes\n";
-                usage += "\tParameters:\n";
-                usage += "\tLINES - show detected lines\n";
-                usage += "\tCIRCLES - show detected circles\n";
-                usage += "\tELLIPSES - show detected ellipses\n";
                 cerr << usage << endl;
                 exit(EXIT_FAILURE);
         }
@@ -613,7 +616,7 @@ int main(int argc, const char **argv) {
         vector<Rect> best_detections;
 
         if (use_pipeline) {
-            best_detections = pipeline(frame, canny, merge, show);
+            best_detections = pipeline(frame, canny, merge, intermediate_folder);
         }
         else {
             best_detections = detectAndDisplay(frame, merge);
@@ -660,8 +663,6 @@ void drawDetections(Mat &image, vector<Rect> detections, vector<Rect> ground_tru
 
 void drawLines(Mat &image, Mat thresholdedMag, std::vector <Line> &detected_lines) 
 {
-
-    Mat lines(image.size(), image.type(), Scalar(0));
     int width = image.cols;
     int height = image.rows;
     int centreX = image.cols / 2;
@@ -686,20 +687,9 @@ void drawLines(Mat &image, Mat thresholdedMag, std::vector <Line> &detected_line
         point2.x = cvRound(x0 - 1000 * (-b));
         point2.y = cvRound(y0 - 1000 * (a));
 
-        line(lines, point1, point2, Scalar(0, 0, 255), 1);
-        line(image, point1, point2, Scalar(0, 0, 255), 1);
+        line(image, point1, point2, Scalar(0, 0, 255), 2);
 
     }
-
-    thresholdedMag.convertTo(thresholdedMag, CV_8U);
-
-    Mat overlay;
-    overlay.zeros(image.size(), image.type());
-    lines.copyTo(overlay, thresholdedMag);
-
-    imwrite("result/lines.jpg", lines);
-    imwrite("result/overlay.jpg", overlay);
-    imwrite("result/foundLines.jpg", image);
 }
 
 vector <Line> collect_lines_from_houghSpace(Mat &houghSpace,
@@ -733,7 +723,6 @@ vector <Line> collect_lines_from_houghSpace(Mat &houghSpace,
             }
         }
     }
-    imwrite("result/houghSpace.jpg", houghSpace);
     return lines;
 }
 
@@ -821,9 +810,6 @@ Mat convolution(Mat &input, int direction, Mat kernel, cv::Size image_size) {
     // Normalise to avoid out of range and negative values
     normalize(output, img, 0, 255, NORM_MINMAX);
 
-    //Save thresholded image
-    if (direction == 0) imwrite("result/dfdx.jpg", img);
-    else imwrite("result/dfdy.jpg", img);
     return output;
 }
 
@@ -852,7 +838,6 @@ Mat getMagnitude(Mat &dfdx, Mat &dfdy, cv::Size image_size) {
 
     normalize(output, img, 0, 255, NORM_MINMAX);
 
-    imwrite("result/magnitude.jpg", img);
     return output;
 }
 
@@ -883,7 +868,6 @@ Mat getDirection(Mat &dfdx, Mat &dfdy, cv::Size image_size) {
 
     normalize(output, img, 0, 255, NORM_MINMAX);
 
-    imwrite("result/direction.jpg", img);
     return output;
 }
 
@@ -903,8 +887,6 @@ void getThresholdedMag(Mat &input, Mat &output, double gradient_threshold) {
             else output.at<double>(y, x) = 0.0;
         }
     }
-
-    imwrite("result/thresholded.jpg", output);
 }
 
 Rect contractBox(Rect &box) {
