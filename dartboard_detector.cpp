@@ -408,6 +408,8 @@ vector <Rect> pipeline(Mat &frame, bool canny, bool merge, int show) {
         Mat thresholdedMag;
         thresholdedMag.create(gray_viola_jones.size(), CV_64F);
 
+        vector<Ellipse> ellipses;
+
         if (canny)
         {
             Mat gradientMagnitude;
@@ -418,6 +420,14 @@ vector <Rect> pipeline(Mat &frame, bool canny, bool merge, int show) {
             gradientMagnitude.convertTo(gradientMagnitude, CV_64F);
 
             thresholdedMag = gradientMagnitude;
+
+            tuple<vector<int>, vector<double>> ellipses_thresholds =  
+                calculate_ellipse_detection_threshold(frame, thresholdedMag);
+
+            ellipses = houghEllipse(thresholdedMag, gray_viola_jones.cols, 
+                gray_viola_jones.rows, ellipses_thresholds);
+
+            cout << "ellipses found: " << ellipses.size() << endl;
 
         }
         else 
@@ -434,16 +444,9 @@ vector <Rect> pipeline(Mat &frame, bool canny, bool merge, int show) {
         auto houghLinesThreshold = calculate_houghLines_voting_threshold(houghSpace);
         auto lines = collect_lines_from_houghSpace(houghSpace, houghLinesThreshold, rect);
 
-        tuple<vector<int>, vector<double>> ellipses_thresholds =  
-            calculate_ellipse_detection_threshold(frame, thresholdedMag);
-
-        auto ellipses = houghEllipse(thresholdedMag, gray_viola_jones.cols, 
-            gray_viola_jones.rows, ellipses_thresholds);
-
-
         cout << "lines found: " << lines.size() << endl;
         cout << "circles found: " << circles.size() << endl;
-        cout << "ellipses found: " << ellipses.size() << endl;
+        
 
         if (dartboardDetected(circles, lines, ellipses, canny, rect)) {
             counter += 1;
@@ -460,7 +463,7 @@ vector <Rect> pipeline(Mat &frame, bool canny, bool merge, int show) {
             drawLines(rgb_viola_jones, thresholdedMag, lines);
         } else if (show == 2) {
             drawCircles(rgb_viola_jones, circles);
-        } else if (show == 3) {
+        } else if (show == 3 && canny) {
             drawEllipse(frame, ellipses, Point(rect.x, rect.y));
         }
 
