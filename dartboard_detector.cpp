@@ -60,6 +60,26 @@ public:
     }
 };
 
+class Ellipse {
+public:
+    Point center;
+    double a;
+    double b;
+    double alpha;
+    int score;
+
+    Ellipse() : center(Point(0,0)), a(0), b(0), alpha(0), score(0) {}
+
+    Ellipse(Point center, double a, double b, double alpha, int score) {
+        this->center = center;
+        this->a = a;
+        this->b = b;
+        this->alpha = alpha;
+        this->score = score;
+    }
+
+};
+
 bool compareByArea(const Circle &c1, const Circle &c2) {
     return c1.r < c2.r;
 }
@@ -159,7 +179,14 @@ double calculate_houghCircles_voting_threshold(std::vector < std::vector < std::
     return 14;
 }
 
-vector <Rect> pipeline(Mat &frame);
+vector<Ellipse> houghEllipse(Mat &thresholdMag, int width, int height, tuple<vector<int>, vector<double>> ellipses_thresholds);
+
+void drawEllipse(Mat &image, vector<Ellipse> hough_ellipse, Point offset);
+
+tuple<vector<int>, vector<double>> calculate_ellipse_detection_threshold(
+    Mat &image, Mat &mag);
+
+vector <Rect> pipeline(Mat &frame, bool canny, bool merge, int show);
 
 double calculate_houghLines_voting_threshold(Mat &hough_space) {
     double max, min;
@@ -198,7 +225,7 @@ bool circlesAreContained(vector <Circle> &circles, int threshold = 20) {
 
 }
 
-bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, Rect &box) {
+bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, vector<Ellipse> ellipses, bool canny, Rect &box) {
     /*
      * A greedy heuristic algorithm that confirms presence of a dartboard, by exploiting results from the viola jones detection, the box merging algorithm, and general dartboard characteristics.
      * Given that the TPR of VJ is relatively high, we can make optimistic greedy decision choices.
@@ -220,9 +247,14 @@ bool dartboardDetected(vector <Circle> &circles, vector <Line> &lines, Rect &box
 
     cout << "circles detected: " << circles.size() << endl;
     cout << "lines detected: " << lines.size() << endl;
+    cout << "ellipses detected: " << ellipses.size() << endl;
 
     for (auto &l: lines) {
         cout << l << endl;
+    }
+
+    if (canny && ellipses.size() == 0) {
+        return false;
     }
 
     if (linesPassThroughBoxCentre(lines, box, MIN_LINES_IN_DARTBOARD) && lines.size() >= MIN_LINES_IN_DARTBOARD) {
@@ -342,7 +374,7 @@ vector <Circle> houghCircles(Mat &image, Mat &thresholdMag, Mat &gradient_dir) {
     return circles;
 }
 
-vector <Rect> pipeline(Mat &frame, bool canny, bool merge) {
+vector <Rect> pipeline(Mat &frame, bool canny, bool merge, int show) {
 
     vector <Rect> best_detections;
 
@@ -361,8 +393,6 @@ vector <Rect> pipeline(Mat &frame, bool canny, bool merge) {
     //get viola-jones detections and draw then in GREEN.
     auto violaJonesDetections = detectAndDisplay(frame, merge);
 
-    imwrite("result/violaJonesDetections.jpg", frame);
-
     //for every detection, apply hough transforms to find the number of circles and lines
     for (auto &rect: violaJonesDetections) {
 
@@ -374,10 +404,11 @@ vector <Rect> pipeline(Mat &frame, bool canny, bool merge) {
         Mat dfdy = convolution(gray_viola_jones, 1, dyKernel, gray_viola_jones.size());
 
         Mat gradientDirection = getDirection(dfdx, dfdy, gray_viola_jones.size());
-        imwrite("dir.jpg", gradientDirection);
 
         Mat thresholdedMag;
         thresholdedMag.create(gray_viola_jones.size(), CV_64F);
+
+        vector<Ellipse> ellipses;
 
         if (canny)
         {
@@ -390,6 +421,14 @@ vector <Rect> pipeline(Mat &frame, bool canny, bool merge) {
 
             thresholdedMag = gradientMagnitude;
 
+            tuple<vector<int>, vector<double>> ellipses_thresholds =  
+                calculate_ellipse_detection_threshold(frame, thresholdedMag);
+
+            ellipses = houghEllipse(thresholdedMag, gray_viola_jones.cols, 
+                gray_viola_jones.rows, ellipses_thresholds);
+
+            cout << "ellipses found: " << ellipses.size() << endl;
+
         }
         else 
         {
@@ -397,34 +436,36 @@ vector <Rect> pipeline(Mat &frame, bool canny, bool merge) {
             getThresholdedMag(gradientMagnitude, thresholdedMag, GRADIENT_THRESHOLD);
         }
 
-        imwrite("magnew.jpg", thresholdedMag);
-
         auto circles = houghCircles(gray_viola_jones, thresholdedMag, gradientDirection);
 
         auto houghSpace = get_houghSpaceLines(thresholdedMag, gradientDirection, gray_viola_jones.cols,
                                               gray_viola_jones.rows);
-
-        imwrite("houghnew.jpg", houghSpace);
 
         auto houghLinesThreshold = calculate_houghLines_voting_threshold(houghSpace);
         auto lines = collect_lines_from_houghSpace(houghSpace, houghLinesThreshold, rect);
 
         cout << "lines found: " << lines.size() << endl;
         cout << "circles found: " << circles.size() << endl;
+        
 
-        if (dartboardDetected(circles, lines, rect)) {
+        if (dartboardDetected(circles, lines, ellipses, canny, rect)) {
             counter += 1;
-            cout << "result: detected" << endl;
 
-            drawLines(rgb_viola_jones, thresholdedMag, lines);
-            drawCircles(rgb_viola_jones, circles);
+            cout << "result: detected" << endl;
             best_detections.push_back(rect);
 
         } else {
             cout << "result: NOT detected" << endl;
-            drawLines(rgb_viola_jones, thresholdedMag, lines);
         }
         cout << "######################" << std::endl;
+
+        if (show == 1) {
+            drawLines(rgb_viola_jones, thresholdedMag, lines);
+        } else if (show == 2) {
+            drawCircles(rgb_viola_jones, circles);
+        } else if (show == 3 && canny) {
+            drawEllipse(frame, ellipses, Point(rect.x, rect.y));
+        }
 
     }
 
@@ -446,11 +487,13 @@ int main(int argc, const char **argv) {
     bool merge = true;
     bool canny = true;
     bool use_pipeline = true;
+    int show = 0;
+    int run_dart = -1;
     string annotation_file_ext = "points.csv";
 
     int opt;
 
-    while ((opt = getopt(argc, (char **) argv, "p:i:c:o:a:")) != -1) {
+    while ((opt = getopt(argc, (char **) argv, "p:i:c:o:a:s:d:")) != -1) {
         switch (opt) {
             case 'i':
                 input_folder = optarg;
@@ -463,6 +506,9 @@ int main(int argc, const char **argv) {
                 break;
             case 'a':
                 ground_truth_folder = optarg;
+                break;
+            case 'd': 
+                run_dart = atoi(optarg);
                 break;
             case 'p': {
                 if (strcmp(optarg, "FULL") == 0) {
@@ -488,14 +534,29 @@ int main(int argc, const char **argv) {
                     break;
                 }
             }
+            case 's': {
+                if (strcmp(optarg, "LINES") == 0) {
+                    show = 1;
+                    break;
+                }
+                else if (strcmp(optarg, "CIRCLES") == 0) {
+                    show = 2;
+                    break;
+                }
+                else if (strcmp(optarg, "ELLIPSES") == 0) {
+                    show = 3;
+                    break;
+                }
+            }
             default: /* '?' */
                 string usage = "\nUsage: " + string(argv[0]);
-                usage += " [-i input_folder] [-c cascade_xml] [-o output_folder] [-a annotations_folder] [-p PIPELINE]\n\n";
+                usage += " [-i input_folder] [-d image_file] [-c cascade_xml] [-o output_folder] [-a annotations_folder] [-p PIPELINE] [-s SHAPES]\n\n";
                 usage += "Options:\n";
                 usage += "-i input_folder, specifies image folder\n";
                 usage += "-c cascade_xml, specifies trained cascade.xml file to use\n";
                 usage += "-o output_folder, specifies output folder for results\n";
                 usage += "-a annotations_folder, specifies folder containing annotations in csv files\n";
+                usage += "-d image_file, run single dart image number from folder \n";
                 usage += "-p PIPELINE, flag to set what pipeline is run\n";
                 usage += "\tParameters:\n";
                 usage += "\tFULL - entire detection pipeline with merge and canny edges (default)\n";
@@ -503,6 +564,11 @@ int main(int argc, const char **argv) {
                 usage += "\tMERGE - detection pipeline with merge\n";
                 usage += "\tBASIC - basic detection pipeline\n";
                 usage += "\tVJ - only use Viola-Jones detector\n";
+                usage += "-s SHAPES, flag to show detected shapes\n";
+                usage += "\tParameters:\n";
+                usage += "\tLINES - show detected lines\n";
+                usage += "\tCIRCLES - show detected circles\n";
+                usage += "\tELLIPSES - show detected ellipses\n";
                 cerr << usage << endl;
                 exit(EXIT_FAILURE);
         }
@@ -510,8 +576,13 @@ int main(int argc, const char **argv) {
 
     // Read the input folder
     Vector<string> files;
-    for (int i = 0; i <= 15; i++) {
-        files.push_back("dart" + to_string(i) + ".jpg");
+    if (run_dart == -1) {
+        for (int i = 0; i <= 15; i++) {
+            files.push_back("dart" + to_string(i) + ".jpg");
+        }
+    }
+    else {
+        files.push_back("dart" + to_string(run_dart) + ".jpg");
     }
 
     string results_output = output_folder + "results.txt";
@@ -540,15 +611,12 @@ int main(int argc, const char **argv) {
 
         // 3. Detect Faces and Display Result
         vector<Rect> best_detections;
-    
-
-        Mat frame_clone = frame.clone();
 
         if (use_pipeline) {
-            best_detections = pipeline(frame_clone, canny, merge);
+            best_detections = pipeline(frame, canny, merge, show);
         }
         else {
-            best_detections = detectAndDisplay(frame_clone, merge);
+            best_detections = detectAndDisplay(frame, merge);
         }
         // vector<Rect> detected = detectAndDisplay( frame, ground_truths, merge );
 
@@ -563,8 +631,8 @@ int main(int argc, const char **argv) {
         
     }
 
-    avg_tpr /= 16;
-    avg_f1 /= 16;
+    avg_tpr /= files.size();
+    avg_f1 /= files.size();
 
     ofstream output_file;
     output_file.open(results_output, fstream::app);
@@ -1067,4 +1135,206 @@ string get_csv_file(const string filePrefix, const string fileExtension, const s
     }
 
     return filePrefix + csv_filename;
+}
+
+tuple<vector<int>, vector<double>> calculate_ellipse_detection_threshold(Mat &image, Mat &mag) {
+
+    // Thresholds for detection, iteration and quantisation
+    int magCount = countNonZero(mag);
+    int major_pair_limit = 20;
+
+
+    int detection_threshold = 120;
+    int accuracy = 1;
+
+
+    vector<int> iteration_thresholds = {
+        detection_threshold, 
+        major_pair_limit,
+        accuracy
+    };
+
+    // Thresholds for minimum ellipse sizes
+    double min_major = 50;
+    double min_minor = 30;
+
+    vector<double> size_thresholds = {
+        min_major, 
+        min_minor,
+    };
+
+    return make_tuple(iteration_thresholds, size_thresholds);
+}
+
+void drawEllipse(Mat &image, vector<Ellipse> hough_ellipse, Point offset) {
+
+    for (auto &ellipse : hough_ellipse) {
+
+        Point center = ellipse.center + offset;
+        double major_axis = ellipse.a;
+        double minor_axis = ellipse.b;
+        double alpha = ellipse.alpha;
+        Size axes(major_axis, minor_axis);
+
+        // Axes overflow for some reason
+        // Possibly due to ellipse merge, buut just ignore these for now
+        if (isnan(major_axis) || isnan(minor_axis)) {
+            continue;
+        }
+        
+        cv::ellipse(image, center, axes, alpha, 0, 360,
+            Scalar(0, 0, 255), 2);
+    }
+
+}
+
+vector<Ellipse> houghEllipse(Mat &thresholdMag, int width, int height, tuple<vector<int>, vector<double>> ellipses_thresholds) {
+    /*
+    Hough Ellipse detection based on 
+
+    Xie, Yonghong, and Qiang Ji. 
+    "A new efficient ellipse detection method." 
+    Pattern Recognition, 2002. Proceedings. 
+    16th International Conference on. Vol. 2. IEEE, 2002
+
+    Applied with randomized hough ellipse frameworkfrom
+
+    S. Inverso, “Ellipse Detection Using Randomized Hough Transform”
+    www.saminverso.com/res/vision/EllipseDetectionOld.pdf, May 20, 2002
+
+    This runs in O(kn^2) where k = major_pair_limit, the main improvement vs 
+    naive O(n^5) implemntation is that instead of iterating over all possible 5
+    parameters of an ellipse we iterate over 3 points in the magnitude to calculate
+    the parameters with the second point chosen randomly k times.
+
+    The best ellipse from the inner most loop is then drawn over the magnitude
+    image and is added if there is a sufficent intesection.
+    */
+
+    srand( 31124 );
+
+    // Stores found ellipse in (x0, y0, a, b, alpha, score) format
+    vector<Ellipse> found_ellipse;
+
+    // Find all edges coordinates by using the thresholded magnitude
+    vector<Point> locations;    
+    Mat mag = thresholdMag.clone();
+    mag.convertTo(mag, CV_8U);
+    if (countNonZero(mag) <= 0) {
+        return found_ellipse;
+    }
+    findNonZero(mag, locations);
+
+    int detection_threshold = get<0>(ellipses_thresholds)[0];
+    int major_pair_limit = get<0>(ellipses_thresholds)[1];
+    int accuracy = get<0>(ellipses_thresholds)[2];
+
+    double min_major = get<1>(ellipses_thresholds)[0];
+    double min_minor = get<1>(ellipses_thresholds)[1];
+
+    // Iterate on all edge coordinates 
+    for (int m = 0; m < locations.size(); m++) {
+        
+        // Get first pixel to lookup
+        int x1 = locations[m].x;
+        int y1 = locations[m].y;
+
+        for (int n = 0; n < major_pair_limit; n++) {
+
+            // Get random choice of second pixel
+            int randomIndex = m;
+
+            while (randomIndex == m) {
+                randomIndex = rand() % locations.size();          
+            }
+
+            // Get second pixel to lookup
+            int x2 = locations[randomIndex].x;
+            int y2 = locations[randomIndex].y;
+
+            double major_axis = sqrt(pow(x1 - x2, 2) + pow(y1 - y2, 2));
+            if (major_axis < min_major) continue;
+
+            // Get half-length of major axis (a) and orientation (alpha)
+            double a = major_axis/2;
+            double alpha;
+            double dy = y2 - y1;
+            double dx = x2 - x1;
+
+            if (dx != 0 && dy != 0) alpha = atan2(dy, dx);
+            else alpha = (double) atan(0);
+
+            // Calculate center of ellipse
+            int x0 = cvRound((x1 + x2)/2);
+            int y0 = cvRound((y1 + y2)/2);
+
+
+            Mat accumulator(2,
+                (int)((sqrt(pow(width,2) + pow(height,2)) + 1)/accuracy), 
+                CV_64F, Scalar(0));
+
+            for (int o = 0; o < locations.size(); o++) {
+
+                if (o == randomIndex || o == m) continue;
+
+                // Get third pixel to lookup
+                int x = locations[o].x;
+                int y = locations[o].y;
+
+                double d = sqrt(pow(x - x0, 2) + pow(y - y0, 2));
+                if (d < min_minor) continue;
+                if (d > a) continue;
+
+                // Get half-length of minor-axis (b)
+                double f_square = pow(x - x1, 2) + pow(y - y1, 2);
+                double cos_tau_square = pow(
+                    (pow(a,2) + pow(d,2) - f_square)/(2*a*d)
+                    ,2);
+
+                // Assume b > 0 and avoid division by 0
+                double k = pow(a,2) - pow(d,2) * cos_tau_square;
+                if (k > 0 && cos_tau_square < 1) {
+                    int b = cvRound(
+                        sqrt((pow(a,2) * pow(d,2) * (1 - cos_tau_square))/k)/accuracy
+                        );
+                    if (b > min_minor/accuracy) accumulator.at<double>(0, b)++;
+                }
+                
+            }
+
+            double max;
+            Point maxLoc;
+
+            // Adds ellipse if the maximum of the accumulator exceeds threshold
+            minMaxLoc(accumulator, NULL, &max, NULL, &maxLoc);
+
+
+            Ellipse new_ellipse (Point(x0, y0), a, maxLoc.x * accuracy, alpha, max);
+
+
+            Mat mask(mag.size(), CV_8U, Scalar(0));
+
+            // Draw added ellipse on mask
+            Size axes(a, maxLoc.x * accuracy);
+
+            ellipse(mask, Point(x0, y0), axes, alpha, 0, 360,
+                Scalar(255),
+                2);
+
+            Mat new_mag;
+            mag.copyTo(new_mag, mask);
+
+            int count = countNonZero(new_mag);
+
+            
+            if (count > detection_threshold) 
+            {          
+                found_ellipse.push_back(new_ellipse);
+            }
+
+        }
+    }
+
+
+    return found_ellipse;
 }
