@@ -1227,7 +1227,7 @@ vector<Ellipse> houghEllipse(Mat &thresholdMag, int width, int height, tuple<vec
     double min_minor = get<1>(ellipses_thresholds)[1];
 
     // Iterate on all edge coordinates 
-    for (int m = 0; m < locations.size() - 2; m++) {
+    for (int m = 0; m < locations.size(); m++) {
         
         // Get first pixel to lookup
         int x1 = locations[m].x;
