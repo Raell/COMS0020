@@ -14,7 +14,7 @@
  
 * `negatives/`: non-dartboard images 
  
-* `ipcv-coursework.pdf`: project writeup reflecting on methodology and results
+* `ipcv-coursework.pdf`: project writeup reflecting on methodology and results ([link](ipcv-coursework.pdf))
  
 For detection results compile using:
 
